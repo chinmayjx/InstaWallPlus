@@ -1,0 +1,23 @@
+{
+  count: 1323,
+  page_info: {
+    has_next_page: true,
+    end_cursor: 'QVFEWGVUYjFJb0JWdFRWNThFSW1KX05RV1hobzBrYk91Mzc4Q2I5VjIzdXlPc25wNHd1N2FGU1RvdFp4cEZRMFE
+0ejk5ODk5NGRISjd1czF1YnFuNmZHcw=='
+  },
+  edges: [
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] },
+    { node: [Object] }
+  ]
+}
+
