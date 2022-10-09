@@ -4,6 +4,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.annotation.SuppressLint;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -14,6 +15,10 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -21,43 +26,15 @@ import cj.instawall.plus.InstaClient;
 
 public class MainActivity extends AppCompatActivity {
     final String TAG = "CJ";
-    String appId = null;
-    WebView wv;
-    Button A,B,C,D,E;
+    public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
+    InstaWebView wv;
+    InstaClient instaClient;
+    Button A, B, C, D, E;
+    SharedPreferences sharedPreferences;
+    SharedPreferences.Editor spEditor;
 
-    @SuppressLint("SetJavaScriptEnabled")
-    void setUpWV() {
-        wv.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com/");
-                if (cookies.contains("sessionid")) {
-                    Log.d(TAG, "Got sessionid cookie");
-                }
-            }
 
-            @Nullable
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-//                for(String h : request.getRequestHeaders().keySet()){
-//                    Log.d(TAG, h + " : " + request.getRequestHeaders().get(h));
-//                }
-                if (appId == null && request.getRequestHeaders().containsKey("X-IG-App-ID")) {
-                    Log.d(TAG, "Got App ID");
-                    appId = request.getRequestHeaders().get("X-IG-App-ID");
-                }
-                return super.shouldInterceptRequest(view, request);
-            }
-        });
-        wv.getSettings().setJavaScriptEnabled(true);
-        wv.getSettings().setDomStorageEnabled(true);
-    }
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    void initializeUI() {
         getSupportActionBar().hide();
         wv = findViewById(R.id.webView);
         A = findViewById(R.id.A);
@@ -65,24 +42,39 @@ public class MainActivity extends AppCompatActivity {
         C = findViewById(R.id.C);
         D = findViewById(R.id.D);
         E = findViewById(R.id.E);
-        setUpWV();
-        String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com/");
-        if (!cookies.contains("sessionid")) {
-            wv.loadUrl("https://www.instagram.com/accounts/login/");
-        } else {
-            wv.loadUrl("https://www.instagram.com/chinmayjain08/saved/");
+        Button[] btns = {A,B,C,D,E};
+        for(Button b: btns){
+            b.setTransformationMethod(null);
         }
-        
-        A.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                HashMap<String,String> headers = new HashMap<>();
-                headers.put("X-IG-App-ID",appId);
-                InstaClient ic = new InstaClient(cookies, headers);
-                ic.getSavedPosts();
-            }
+    }
+
+    void addClickListeners() {
+        A.setOnClickListener(v -> wv.login());
+        B.setOnClickListener(v -> {
+            HashMap<String,String> headers = new HashMap<>();
+            headers.put("cookie", sharedPreferences.getString("cookie", null));
+            headers.put("X-IG-App-ID", sharedPreferences.getString("X-IG-App-ID", null));
+            instaClient = new InstaClient(headers);
         });
-        
+        C.setOnClickListener(v -> {
+            instaClient.act(InstaClient.GET_SAVED_POSTS);
+        });
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        sharedPreferences = getSharedPreferences(GLOBAL_SHARED_PREF , MODE_PRIVATE);
+        spEditor = sharedPreferences.edit();
+
+        initializeUI();
+        addClickListeners();
+
+
+
+
     }
 
     @Override
