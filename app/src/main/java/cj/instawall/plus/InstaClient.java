@@ -88,12 +88,10 @@ public class InstaClient {
             JSONObject savedMedia = userInfo.getJSONObject("data")
                     .getJSONObject("user")
                     .getJSONObject("edge_saved_media");
-            JSONObject pageInfo = savedMedia.getJSONObject("page_info");
-            JSONArray edges = savedMedia.getJSONArray("edges");
-            Log.d(TAG, "UserInfo: " + pageInfo.toString(2));
-            if (pageInfo.getBoolean("has_next_page")) {
-                getAllSavedPosts(edges, pageInfo.getString("end_cursor"));
-            }
+
+            Log.d(TAG, "User has " + savedMedia.getInt("count") + " saved posts");
+            JSONArray edges = new JSONArray();
+            getAllSavedPosts(edges, savedMedia);
             Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts");
 //            Log.d(TAG, edges.toString());
         } catch (Exception e) {
@@ -102,15 +100,8 @@ public class InstaClient {
         return null;
     }
 
-    public void getAllSavedPosts(JSONArray edges, String cursor) {
+    public void getAllSavedPosts(JSONArray edges, JSONObject savedMedia) {
         try {
-            Log.d(TAG, "Cursor at: " + cursor);
-            HttpURLConnection con = getConnection("https://www.instagram.com/graphql/query/?query_hash=2ce1d673055b99250e93b6f88f878fde&variables=" +
-                    URLEncoder.encode("{\"id\":\"" + sessionID + "\",\"first\":12,\"after\":\"" + cursor + "\"}", StandardCharsets.UTF_8.toString()));
-            JSONObject res = getJSONResponse(con);
-            JSONObject savedMedia = res.getJSONObject("data")
-                    .getJSONObject("user")
-                    .getJSONObject("edge_saved_media");
             JSONArray newEdges = savedMedia.optJSONArray("edges");
             if (newEdges != null) {
                 for (int i = 0; i < newEdges.length(); i++) {
@@ -119,8 +110,16 @@ public class InstaClient {
             }
             Log.d(TAG, "Got " + edges.length() + " posts");
             JSONObject pageInfo = savedMedia.getJSONObject("page_info");
+            Log.d(TAG, newEdges.length() + " : " + pageInfo.toString(2));
             if (pageInfo.getBoolean("has_next_page")) {
-                getAllSavedPosts(edges, pageInfo.getString("end_cursor"));
+                String cursor = pageInfo.getString("end_cursor");
+                HttpURLConnection con = getConnection("https://www.instagram.com/graphql/query/?query_hash=2ce1d673055b99250e93b6f88f878fde&variables=" +
+                        URLEncoder.encode("{\"id\":\"" + sessionID + "\",\"first\":100,\"after\":\"" + cursor + "\"}", StandardCharsets.UTF_8.toString()));
+                JSONObject res = getJSONResponse(con);
+                savedMedia = res.getJSONObject("data")
+                        .getJSONObject("user")
+                        .getJSONObject("edge_saved_media");
+                getAllSavedPosts(edges, savedMedia);
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
