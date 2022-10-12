@@ -44,16 +44,12 @@ public class MainActivity extends AppCompatActivity {
     String interceptor;
 
     void createInstaClient() {
-        HashMap<String, String> headers = new HashMap<>();
-        String cookie = sharedPreferences.getString("cookie", null);
-        String appID = sharedPreferences.getString("X-IG-App-ID", null);
-        if (cookie == null || appID == null) {
-            Log.e(TAG, "Can't create InstaClient in MainActivity");
+        try {
+            instaClient = new InstaClient(this);
+            Log.d(TAG, "Updated InstaClient from MainActivity");
+        } catch (Exception e) {
+            Log.e(TAG, Log.getStackTraceString(e));
         }
-        headers.put("cookie", cookie);
-        headers.put("X-IG-App-ID", appID);
-        instaClient = new InstaClient(headers, sharedPreferences.getString("username", null));
-        Log.d(TAG, "Updated InstaClient in MainActivity");
     }
 
     void initializeUI() {
@@ -78,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
             instaClient.act(InstaClient.GET_SAVED_POSTS);
         });
         C.setOnClickListener(v -> {
-
+            instaClient.act(InstaClient.TEST);
         });
     }
 
