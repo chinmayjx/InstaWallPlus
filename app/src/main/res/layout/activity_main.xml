@@ -42,7 +42,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginLeft="10dp"
-                android:text="C" />
+                android:text="Random WallP" />
 
             <Button
                 android:typeface="monospace"
@@ -50,7 +50,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginLeft="10dp"
-                android:text="D" />
+                android:text="Continue Last Sync" />
 
             <Button
                 android:typeface="monospace"

@@ -35,6 +35,7 @@ import cj.instawall.plus.InstaClient;
 public class MainActivity extends AppCompatActivity {
     final String TAG = "CJ";
     public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
+
     FrameLayout wvHolder;
     InstaWebView wv;
     InstaClient instaClient;
@@ -74,7 +75,10 @@ public class MainActivity extends AppCompatActivity {
             instaClient.act(InstaClient.GET_SAVED_POSTS);
         });
         C.setOnClickListener(v -> {
-            instaClient.act(InstaClient.TEST);
+            instaClient.act(InstaClient.RANDOM_WALLPAPER);
+        });
+        D.setOnClickListener(v -> {
+            instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
         });
     }
 

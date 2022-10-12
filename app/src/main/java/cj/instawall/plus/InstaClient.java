@@ -1,32 +1,37 @@
 package cj.instawall.plus;
 
+import android.app.WallpaperManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.util.DisplayMetrics;
 import android.util.Log;
-import android.webkit.CookieManager;
+import android.view.WindowManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.ObjectOutputStream;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,9 +50,31 @@ public class InstaClient {
     JSONArray savedPostsJSON;
     Context context;
     SharedPreferences sharedPreferences;
+    SharedPreferences.Editor spEditor;
+
+    static class PostInfo {
+        public static JSONObject noCarouselImage(JSONObject postInfo) throws JSONException {
+            return postInfo.getJSONArray("items").getJSONObject(0);
+        }
+
+        public static JSONArray carouselMedia(JSONObject postInfo) throws JSONException {
+            return postInfo.getJSONArray("items").getJSONObject(0).getJSONArray("carousel_media");
+        }
+
+        public static String postID(JSONObject postInfo) throws JSONException {
+            return postInfo.getJSONArray("items").getJSONObject(0).getString("pk");
+        }
+    }
+
+    static class SavedItem {
+        public static String postID(JSONObject savedItem) throws JSONException {
+            return savedItem.getJSONObject("node").getString("id");
+        }
+    }
 
     public InstaClient(Context context) throws Exception {
         sharedPreferences = context.getSharedPreferences(MainActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
+        spEditor = sharedPreferences.edit();
         String cookie = sharedPreferences.getString("cookie", null);
         String appID = sharedPreferences.getString("X-IG-App-ID", null);
         username = sharedPreferences.getString("username", null);
@@ -72,6 +99,8 @@ public class InstaClient {
     public static final int TEST = 0;
     public static final int GET_USER_INFO = 1;
     public static final int GET_SAVED_POSTS = 2;
+    public static final int CONTINUE_LAST_SYNC = 3;
+    public static final int RANDOM_WALLPAPER = 4;
 
     public void act(int code) {
         switch (code) {
@@ -79,7 +108,13 @@ public class InstaClient {
                 executor.execute(this::getUserInfo);
                 break;
             case GET_SAVED_POSTS:
-                executor.execute(this::getSavedPosts);
+                executor.execute(() -> getSavedPosts(false));
+                break;
+            case CONTINUE_LAST_SYNC:
+                executor.execute(() -> getSavedPosts(true));
+                break;
+            case RANDOM_WALLPAPER:
+                executor.execute(this::setRandomWallpaper);
                 break;
             case TEST:
                 executor.execute(this::test);
@@ -88,8 +123,14 @@ public class InstaClient {
     }
 
     void test() {
+
+    }
+
+    void setRandomWallpaper() {
         try {
-            getImageInPost(getPostInfo("2938978685088465262"), "2938978678755199850");
+            JSONObject randomPost = getPostInfo(SavedItem.postID(getRandomSavedItem()));
+            String randomImage = getRandomImageInPost(randomPost);
+            setWallpaper(getImageInPost(randomPost, randomImage));
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
@@ -101,15 +142,30 @@ public class InstaClient {
             String savedPosts = new String(Files.readAllBytes(Paths.get(assetsDir, username, "saved_posts.json")));
             JSONArray ob = new JSONArray(savedPosts);
             return ob;
-        } catch (Exception e) {
-            Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(e));
+        } catch (NoSuchFileException e) {
+            try {
+                return new JSONArray("[]");
+            } catch (Exception f) {
+                Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
+            }
+        } catch (Exception f) {
+            Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
         }
         return null;
     }
 
-    JSONObject getRandomPostJSON() throws JSONException {
+    JSONObject getRandomSavedItem() throws JSONException {
         JSONArray savedPosts = getSavedPostsJSON();
         return savedPosts.getJSONObject((int) (Math.random() * savedPosts.length()));
+    }
+
+    String getRandomImageInPost(JSONObject postInfo) throws JSONException {
+        try {
+            JSONArray carouselMedia = PostInfo.carouselMedia(postInfo);
+            return carouselMedia.getJSONObject((int) (Math.random() * carouselMedia.length())).getString("pk");
+        } catch (JSONException e) {
+            return PostInfo.noCarouselImage(postInfo).getString("pk");
+        }
     }
 
     JSONObject getPostInfo(String postId) {
@@ -118,6 +174,7 @@ public class InstaClient {
                 Log.d(TAG, "found " + postId + " info locally");
                 return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
             }
+            Log.d(TAG, "fetching " + postId + " from IG");
             HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
             JSONObject res = getJSONResponse(con);
             Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"));
@@ -142,46 +199,89 @@ public class InstaClient {
         return "none";
     }
 
-    String getImageInPost(JSONObject postInfo, String imageId) throws JSONException, IOException {
-        JSONArray carouselMedia = postInfo.getJSONArray("items").getJSONObject(0).getJSONArray("carousel_media");
-        String postID = postInfo.getJSONArray("items").getJSONObject(0).getString("pk");
+    String getImageInPost(JSONObject postInfo, String imageId) throws IOException, JSONException {
+        try {
+            return getImageInCarousel(postInfo, imageId);
+        } catch (JSONException e) {
+            return saveImageFromObject(PostInfo.noCarouselImage(postInfo), PostInfo.postID(postInfo));
+        }
+    }
+
+    String getImageInCarousel(JSONObject postInfo, String imageId) throws JSONException, IOException {
+        JSONArray carouselMedia = PostInfo.carouselMedia(postInfo);
+        String postID = PostInfo.postID(postInfo);
         String newFileName = null;
         for (int i = 0; i < carouselMedia.length(); i++) {
             JSONObject c = carouselMedia.getJSONObject(i);
             String imageID = c.optString("pk");
             if (imageID.equals(imageId)) {
-                Log.d(TAG, c.getString("pk"));
-                String originalWidth = c.getString("original_width");
-                String originalHeight = c.getString("original_height");
-                JSONArray imageVersions = c.getJSONObject("image_versions2").getJSONArray("candidates");
-                for (int j = 0; j < imageVersions.length(); j++) {
-                    JSONObject iv = imageVersions.getJSONObject(j);
-                    if (iv.optString("width").equals(originalWidth) && iv.optString("height").equals(originalHeight)) {
-                        Log.d(TAG, iv.getString("url"));
-                        String oldFileName = filenameFromUrl(iv.getString("url"));
-                        newFileName = postID + "_" + imageID + ".jpg";
-                        Log.d(TAG, oldFileName);
-                        if (Files.exists(Paths.get(imagePath, oldFileName))) {
-                            Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName));
-                            Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
-                            break;
-                        } else if (Files.exists(Paths.get(imagePath, newFileName))) {
-                            Log.d(TAG, "File already exists, " + newFileName);
-                            break;
-                        }
-                        String url = iv.getString("url");
-                        Log.d(TAG, "downloading image: " + url);
-                        downloadFromURL(url, Paths.get(imagePath, newFileName));
-                    }
-                }
+                newFileName = saveImageFromObject(c, postID);
                 break;
             }
         }
         return newFileName;
     }
 
+    String saveImageFromObject(JSONObject c, String postID) throws JSONException, IOException {
+        String imageID = c.getString("pk");
+        String newFileName = postID + "_" + imageID + ".jpg";
+        String originalWidth = c.getString("original_width");
+        String originalHeight = c.getString("original_height");
+        JSONArray imageVersions = c.getJSONObject("image_versions2").getJSONArray("candidates");
+        for (int j = 0; j < imageVersions.length(); j++) {
+            JSONObject iv = imageVersions.getJSONObject(j);
+            if (iv.optString("width").equals(originalWidth) && iv.optString("height").equals(originalHeight)) {
+                Log.d(TAG, iv.getString("url"));
+                String oldFileName = filenameFromUrl(iv.getString("url"));
+                Log.d(TAG, oldFileName);
+                if (Files.exists(Paths.get(imagePath, oldFileName))) {
+                    Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
+                    Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
+                    break;
+                } else if (Files.exists(Paths.get(imagePath, newFileName))) {
+                    Log.d(TAG, "File already exists, " + newFileName);
+                    break;
+                }
+                String url = iv.getString("url");
+                Log.d(TAG, "downloading image: " + url);
+                downloadFromURL(url, Paths.get(imagePath, newFileName));
+            }
+        }
+        return newFileName;
+    }
+
+    void setWallpaper(String filename) {
+        try {
+            Bitmap bitmap = BitmapFactory.decodeFile(Paths.get(imagePath, filename).toString());
+            DisplayMetrics met = new DisplayMetrics();
+            ((WindowManager) context.getSystemService(context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(met);
+            int w = met.widthPixels;
+            int h = met.heightPixels;
+            if (w > h) {
+                int tmp = w;
+                w = h;
+                h = tmp;
+            }
+//            Log.d(TAG, String.valueOf(w) + " x " + String.valueOf(h));
+            int sh = (int) ((float) w / (float) bitmap.getWidth() * (float) bitmap.getHeight());
+            Bitmap background = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(background);
+            bitmap = Bitmap.createScaledBitmap(bitmap, w, sh, true);
+
+            canvas.drawBitmap(bitmap, 0, (h - sh) >> 1, new Paint());
+
+            background.compress(Bitmap.CompressFormat.PNG, 100, new FileOutputStream(new File(context.getExternalFilesDir(null), "test.png")));
+//            Log.d(TAG, String.valueOf(sh));
+            WallpaperManager manager = WallpaperManager.getInstance(context);
+            manager.setBitmap(background);
+            Log.d(TAG, "Wallpaper set successfully");
+        } catch (Exception e) {
+            Log.d(TAG, "Failed to set wallpaper " + Log.getStackTraceString(e));
+        }
+    }
+
     String getRandomPost() throws JSONException {
-        String pid = getRandomPostJSON().getJSONObject("node").getString("id");
+        String pid = getRandomSavedItem().getJSONObject("node").getString("id");
         Log.d(TAG, pid);
 //        Log.d(TAG, getPostInfo(pid).toString(2));;
         return null;
@@ -218,21 +318,32 @@ public class InstaClient {
         return null;
     }
 
-    public JSONArray getSavedPosts() {
-        JSONArray edges = null;
+    public JSONArray getSavedPosts(boolean continueLast) {
+
+        HashSet<String> set = new HashSet<>();
+        JSONArray edges = getSavedPostsJSON();
+        int oldLength = edges.length();
         try {
-            JSONObject userInfo = getUserInfo();
-            JSONObject savedMedia = userInfo.getJSONObject("data")
-                    .getJSONObject("user")
-                    .getJSONObject("edge_saved_media");
+            for (int i = 0; i < edges.length(); i++) {
+                set.add(SavedItem.postID(edges.getJSONObject(i)));
+            }
+            JSONObject savedMedia = null;
+            if (continueLast) {
+                savedMedia = new JSONObject("{\"edges\":[],\"count\": -1,\"page_info\": {\n" +
+                        "                    \"has_next_page\": true,\n" +
+                        "                    \"end_cursor\": \"" + sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, "") + "\"\n" +
+                        "                }}");
+            } else {
+                JSONObject userInfo = getUserInfo();
+                savedMedia = userInfo.getJSONObject("data")
+                        .getJSONObject("user")
+                        .getJSONObject("edge_saved_media");
+            }
 
             Log.d(TAG, "User has " + savedMedia.getInt("count") + " saved posts");
-            edges = new JSONArray();
-            getAllSavedPosts(edges, savedMedia);
-            Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts");
-            if (edges.length() > 0) {
-                Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(assetsDir, username, "saved_posts.json"));
-            }
+            getAllSavedPosts(edges, savedMedia, set, 0, 5);
+            Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts, found " + (edges.length() - oldLength) + " new");
+            Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(assetsDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
 //            Log.d(TAG, edges.toString());
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
@@ -240,27 +351,41 @@ public class InstaClient {
         return edges;
     }
 
-    public void getAllSavedPosts(JSONArray edges, JSONObject savedMedia) {
+    public void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
+                                 int repeatCount, int repeatLimit) {
         try {
             JSONArray newEdges = savedMedia.optJSONArray("edges");
             if (newEdges != null) {
                 for (int i = 0; i < newEdges.length(); i++) {
-                    edges.put(newEdges.get(i));
+                    if (set.contains(SavedItem.postID(newEdges.getJSONObject(i)))) {
+                        repeatCount++;
+                    } else {
+                        edges.put(newEdges.get(i));
+                    }
                 }
             }
             Log.d(TAG, "Got " + edges.length() + " posts");
             JSONObject pageInfo = savedMedia.getJSONObject("page_info");
             Log.d(TAG, newEdges.length() + " : " + pageInfo.toString(2));
+            if (repeatCount >= repeatLimit) {
+                Log.d(TAG, "post repeat limit reached, sync complete");
+                return;
+            }
             if (pageInfo.getBoolean("has_next_page")) {
                 String cursor = pageInfo.getString("end_cursor");
+                if (!cursor.isEmpty()) {
+                    spEditor.putString(SPKeys.LAST_SYNC_CURSOR, cursor);
+                    spEditor.apply();
+                }
                 HttpURLConnection con = getConnection("https://www.instagram.com/graphql/query/?query_hash=2ce1d673055b99250e93b6f88f878fde&variables=" +
                         URLEncoder.encode("{\"id\":\"" + sessionID + "\",\"first\":100,\"after\":\"" + cursor + "\"}", StandardCharsets.UTF_8.toString()));
                 JSONObject res = getJSONResponse(con);
                 savedMedia = res.getJSONObject("data")
                         .getJSONObject("user")
                         .getJSONObject("edge_saved_media");
-                getAllSavedPosts(edges, savedMedia);
+                getAllSavedPosts(edges, savedMedia, set, repeatCount, repeatLimit);
             }
+
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
