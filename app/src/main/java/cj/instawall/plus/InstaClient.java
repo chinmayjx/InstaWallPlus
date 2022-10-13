@@ -187,7 +187,7 @@ public class InstaClient {
 
     void downloadFromURL(String url, Path filePath) throws IOException {
         HttpURLConnection con = getConnection(url);
-        Files.copy(con.getInputStream(), filePath);
+        Files.copy(con.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
         con.getInputStream().close();
     }
 
@@ -223,6 +223,22 @@ public class InstaClient {
         return newFileName;
     }
 
+    boolean qualityCheck(Path image, JSONObject imageInfo) throws JSONException {
+        Bitmap img = BitmapFactory.decodeFile(image.toString());
+        String requiredDimensions = imageInfo.getString("width") + " x " + imageInfo.getString("height");
+        String actualDimensions = img.getWidth() + " x " + img.getHeight();
+        if(requiredDimensions.equals(actualDimensions)){
+            Log.d(TAG, "qualityCheck: pass");
+            return true;
+        }
+        else{
+            Log.d(TAG, "qualityCheck: fail, replacing local file.");
+            Log.d(TAG, "required dimensions: " + requiredDimensions);
+            Log.d(TAG, "actual dimensions: " + actualDimensions);
+            return false;
+        }
+    }
+
     String saveImageFromObject(JSONObject c, String postID) throws JSONException, IOException {
         String imageID = c.getString("pk");
         String newFileName = postID + "_" + imageID + ".jpg";
@@ -235,13 +251,15 @@ public class InstaClient {
                 Log.d(TAG, iv.getString("url"));
                 String oldFileName = filenameFromUrl(iv.getString("url"));
                 Log.d(TAG, oldFileName);
-                if (Files.exists(Paths.get(imagePath, oldFileName))) {
-                    Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
-                    Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
-                    break;
-                } else if (Files.exists(Paths.get(imagePath, newFileName))) {
-                    Log.d(TAG, "File already exists, " + newFileName);
-                    break;
+                if (Files.exists(Paths.get(imagePath, oldFileName)) || Files.exists(Paths.get(imagePath, newFileName))) {
+                    if(Files.exists(Paths.get(imagePath, oldFileName))){
+                        Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
+                        Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
+                    }
+                    else{
+                        Log.d(TAG, "File already exists, " + newFileName);
+                    }
+                    if(qualityCheck(Paths.get(imagePath, newFileName), iv)) break;
                 }
                 String url = iv.getString("url");
                 Log.d(TAG, "downloading image: " + url);
@@ -255,7 +273,7 @@ public class InstaClient {
         try {
             Bitmap bitmap = BitmapFactory.decodeFile(Paths.get(imagePath, filename).toString());
             DisplayMetrics met = new DisplayMetrics();
-            ((WindowManager) context.getSystemService(context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(met);
+            ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(met);
             int w = met.widthPixels;
             int h = met.heightPixels;
             if (w > h) {

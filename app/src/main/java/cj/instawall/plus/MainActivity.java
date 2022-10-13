@@ -90,6 +90,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             Scanner s = new Scanner(getAssets().open("Interceptor.js")).useDelimiter("\\A");
             interceptor = s.hasNext() ? s.next() : "";
+            s.close();
         } catch (IOException e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
