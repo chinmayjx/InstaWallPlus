@@ -82,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
             instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
         });
         E.setOnClickListener(v -> {
-            startService(new Intent(this, MainService.class));
+            new RESTServer(instaClient).startListening();
         });
     }
 
@@ -110,6 +110,7 @@ public class MainActivity extends AppCompatActivity {
         addClickListeners();
 
         createInstaClient();
+        new RESTServer(instaClient).startListening();
     }
 
     @Override

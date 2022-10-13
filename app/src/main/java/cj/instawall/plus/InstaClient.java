@@ -128,9 +128,7 @@ public class InstaClient {
 
     void setRandomWallpaper() {
         try {
-            JSONObject randomPost = getPostInfo(SavedItem.postID(getRandomSavedItem()));
-            String randomImage = getRandomImageInPost(randomPost);
-            setWallpaper(getImageInPost(randomPost, randomImage));
+            setWallpaper(getRandomImage());
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
@@ -166,6 +164,12 @@ public class InstaClient {
         } catch (JSONException e) {
             return PostInfo.noCarouselImage(postInfo).getString("pk");
         }
+    }
+
+    Path getRandomImage() throws JSONException, IOException {
+        JSONObject randomPost = getPostInfo(SavedItem.postID(getRandomSavedItem()));
+        String randomImage = getRandomImageInPost(randomPost);
+        return Paths.get(imagePath, getImageInPost(randomPost, randomImage));
     }
 
     JSONObject getPostInfo(String postId) {
@@ -269,9 +273,9 @@ public class InstaClient {
         return newFileName;
     }
 
-    void setWallpaper(String filename) {
+    void setWallpaper(Path path) {
         try {
-            Bitmap bitmap = BitmapFactory.decodeFile(Paths.get(imagePath, filename).toString());
+            Bitmap bitmap = BitmapFactory.decodeFile(path.toString());
             DisplayMetrics met = new DisplayMetrics();
             ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(met);
             int w = met.widthPixels;
