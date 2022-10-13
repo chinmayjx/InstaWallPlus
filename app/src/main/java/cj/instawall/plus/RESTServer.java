@@ -94,6 +94,8 @@ public class RESTServer {
                 case "collage":
                     sendString(client, "collage");
                     break;
+                default:
+                    sendString(client, "404 NOT FOUND");
             }
         }
     }
