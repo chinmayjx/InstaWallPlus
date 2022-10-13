@@ -85,7 +85,7 @@ public class InstaClient {
         headers = new HashMap<>();
         headers.put("cookie", cookie);
         headers.put("X-IG-App-ID", appID);
-        this.executor = Executors.newCachedThreadPool();
+        this.executor = Executors.newSingleThreadExecutor();
         this.sessionID = getSessionID(headers.get("cookie"));
         this.context = context;
         this.assetsDir = context.getExternalFilesDir(null).toString();
@@ -188,6 +188,7 @@ public class InstaClient {
     void downloadFromURL(String url, Path filePath) throws IOException {
         HttpURLConnection con = getConnection(url);
         Files.copy(con.getInputStream(), filePath);
+        con.getInputStream().close();
     }
 
     String filenameFromUrl(String url) {
@@ -303,7 +304,9 @@ public class InstaClient {
     }
 
     JSONObject getJSONResponse(HttpURLConnection con) throws IOException, JSONException {
-        return new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
+        JSONObject res = new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
+        con.getInputStream().close();
+        return res;
     }
 
     public JSONObject getUserInfo() {
@@ -344,6 +347,7 @@ public class InstaClient {
             getAllSavedPosts(edges, savedMedia, set, 0, 5);
             Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts, found " + (edges.length() - oldLength) + " new");
             Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(assetsDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
+            this.savedPostsJSON = null;
 //            Log.d(TAG, edges.toString());
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));

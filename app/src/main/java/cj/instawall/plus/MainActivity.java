@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
@@ -79,6 +80,9 @@ public class MainActivity extends AppCompatActivity {
         });
         D.setOnClickListener(v -> {
             instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
+        });
+        E.setOnClickListener(v -> {
+            startService(new Intent(this, MainService.class));
         });
     }
 
