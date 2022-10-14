@@ -130,6 +130,10 @@ public class InstaClient {
         return BitmapFactory.decodeFile(Paths.get(imagePath, name).toString());
     }
 
+    Path pathByFileName(String name){
+        return Paths.get(imagePath, name);
+    }
+
     void setRandomWallpaper() {
         try {
             setWallpaper(getRandomImage());
@@ -280,6 +284,7 @@ public class InstaClient {
     void setWallpaper(Path path) {
         try {
             Bitmap bitmap = BitmapFactory.decodeFile(path.toString());
+            bitmap = CJImageUtil.removeWhiteBorder(bitmap);
             DisplayMetrics met = new DisplayMetrics();
             ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(met);
             int w = met.widthPixels;

@@ -1,11 +1,8 @@
 package cj.instawall.plus;
 
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.util.Log;
 
-import java.util.Arrays;
-import java.util.concurrent.Callable;
 import java.util.function.IntPredicate;
 
 public class CJImageUtil {
@@ -28,11 +25,26 @@ public class CJImageUtil {
         return color;
     }
 
+    static float colorDistance(int c1, int c2) {
+        int[] c1a = argb(c1);
+        int[] c2a = argb(c2);
+        return Math.abs(c1a[0] - c2a[0]) +
+                Math.abs(c1a[1] - c2a[1]) +
+                Math.abs(c1a[2] - c2a[2]) +
+                Math.abs(c1a[3] - c2a[3]);
+    }
+
+    static final float falsePixelCutoff = 0.05f;
+    static final int colorDistanceCutoff = 30;
+    static final int borderEscapePadding = 10;
+
     static boolean rowHasSameColor(Bitmap img, Integer color, int y) {
         if (color == null) color = img.getPixel(0, y);
+        int odd = 0;
         for (int i = 0; i < img.getWidth(); i++) {
-            if (img.getPixel(i, y) != color) {
-                return false;
+            if (colorDistance(img.getPixel(i, y), color) > colorDistanceCutoff) {
+                odd++;
+                if ((float) odd / img.getWidth() > falsePixelCutoff) return false;
             }
         }
         return true;
@@ -40,15 +52,17 @@ public class CJImageUtil {
 
     static boolean colHasSameColor(Bitmap img, Integer color, int x) {
         if (color == null) color = img.getPixel(x, 0);
-        for (int i = 0; i < img.getWidth(); i++) {
-            if (img.getPixel(x, i) != color) {
-                return false;
+        int odd = 0;
+        for (int i = 0; i < img.getHeight(); i++) {
+            if (colorDistance(img.getPixel(x, i), color) > colorDistanceCutoff) {
+                odd++;
+                if ((float) odd / img.getHeight() > falsePixelCutoff) return false;
             }
         }
         return true;
     }
 
-    static int firstNotSatisfying(int s, int e, IntPredicate f) {
+    static int firstFalse(int s, int e, IntPredicate f) {
         int m = (s + e) / 2;
         while (s < e) {
             if (f.test(m)) {
@@ -61,11 +75,36 @@ public class CJImageUtil {
         return s;
     }
 
+    static int topBound(Bitmap img, IntPredicate f) {
+        if (!f.test(0)) return 0;
+        return firstFalse(0, img.getHeight() / 2, f) + borderEscapePadding;
+    }
+
+    static int bottomBound(Bitmap img, IntPredicate f) {
+        if (!f.test(img.getHeight() - 1)) return img.getHeight() - 1;
+        return firstFalse(img.getHeight() / 2, img.getHeight() - 1, y -> !f.test(y)) - 1 - borderEscapePadding;
+    }
+
+    static int leftBound(Bitmap img, IntPredicate f) {
+        if (!f.test(0)) return 0;
+        return firstFalse(0, img.getWidth() / 2, f) + borderEscapePadding;
+    }
+
+    static int rightBound(Bitmap img, IntPredicate f) {
+        if (!f.test(img.getWidth() - 1)) return img.getWidth() - 1;
+        return firstFalse(img.getWidth() / 2, img.getWidth() - 1, x -> !f.test(x)) - 1 - borderEscapePadding;
+    }
+
     public static Bitmap removeWhiteBorder(Bitmap img) {
-        int top = firstNotSatisfying(0, img.getHeight() / 2, y -> rowHasSameColor(img, -1, y));
-        int bottom = firstNotSatisfying(img.getHeight() / 2, img.getHeight() - 1, y -> !rowHasSameColor(img, -1, y));
-        Log.d(TAG, "top " + top);
-        Log.d(TAG, "bottom " + bottom);
-        return Bitmap.createBitmap(img, 0, top, img.getWidth(), bottom - top);
+        int top = topBound(img, y -> rowHasSameColor(img, -1, y));
+        int bottom = bottomBound(img, y -> rowHasSameColor(img, -1, y));
+        int left = leftBound(img, x -> colHasSameColor(img, -1, x));
+        int right = rightBound(img, x -> colHasSameColor(img, -1, x));
+        if (top == 0 && left == 0 && right == img.getWidth() - 1 && bottom == img.getHeight() - 1) {
+            return img;
+        } else {
+            Log.d(TAG, "cropped border, bounds: [ltrb] : " + left + " " + top + " " + right + " " + bottom + " from " + img.getWidth() + "x" + img.getHeight());
+        }
+        return Bitmap.createBitmap(img, left, top, right - left, bottom - top);
     }
 }

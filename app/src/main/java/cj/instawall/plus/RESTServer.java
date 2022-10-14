@@ -144,6 +144,10 @@ public class RESTServer {
                 case "remove-border":
                     sendBitmap(client, CJImageUtil.removeWhiteBorder(instaClient.bitmapByFileName(pathTokens[1])));
                     break;
+                case "set-wallpaper":
+                    instaClient.setWallpaper(instaClient.pathByFileName(pathTokens[1]));
+                    sendString(client, "OK boss");
+                    break;
                 default:
                     sendString(client, "404 NOT FOUND");
             }
