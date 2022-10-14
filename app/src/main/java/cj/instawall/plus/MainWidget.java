@@ -15,14 +15,17 @@ public class MainWidget extends AppWidgetProvider {
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         super.onUpdate(context, appWidgetManager, appWidgetIds);
         Log.d(TAG, "widget onUpdate");
-        for (int i=0; i < appWidgetIds.length; i++) {
+        for (int i = 0; i < appWidgetIds.length; i++) {
             int appWidgetId = appWidgetIds[i];
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_layout);
             Intent intent = new Intent(context, MainService.class);
+            intent.setAction(MainService.SET_RANDOM_WALLPAPER);
             PendingIntent pendingIntent = PendingIntent.getForegroundService(context, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             views.setOnClickPendingIntent(R.id.wid_btn, pendingIntent);
             appWidgetManager.updateAppWidget(appWidgetId, views);
         }
-        context.startForegroundService(new Intent(context,MainService.class));
+        Intent intent = new Intent(context, MainService.class);
+        intent.setAction(MainService.SET_RANDOM_WALLPAPER);
+        context.startForegroundService(intent);
     }
 }

@@ -4,12 +4,15 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,25 +50,17 @@ public class MainActivity extends AppCompatActivity {
 
     FrameLayout wvHolder;
     InstaWebView wv;
-    InstaClient instaClient;
     Button A, B, C, D, E;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
     String interceptor;
 
-    void createInstaClient() {
-        try {
-            instaClient = new InstaClient(this);
-            Log.d(TAG, "Updated InstaClient from MainActivity");
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        }
-    }
+    MainService mainService;
 
     void initializeUI() {
         getSupportActionBar().hide();
         wvHolder = findViewById(R.id.webViewHolder);
-        wv = new InstaWebView(this, this::createInstaClient, interceptor);
+        wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
         wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         A = findViewById(R.id.A);
         B = findViewById(R.id.B);
@@ -81,16 +76,16 @@ public class MainActivity extends AppCompatActivity {
     void addClickListeners() {
         A.setOnClickListener(v -> wv.login());
         B.setOnClickListener(v -> {
-            instaClient.act(InstaClient.GET_SAVED_POSTS);
+            mainService.instaClient.act(InstaClient.GET_SAVED_POSTS);
         });
         C.setOnClickListener(v -> {
-            instaClient.act(InstaClient.RANDOM_WALLPAPER);
+            mainService.instaClient.act(InstaClient.RANDOM_WALLPAPER);
         });
         D.setOnClickListener(v -> {
-            instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
+            mainService.instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
         });
         E.setOnClickListener(v -> {
-            new RESTServer(instaClient).startListening();
+            new RESTServer(mainService.instaClient).startListening();
         });
     }
 
@@ -109,22 +104,36 @@ public class MainActivity extends AppCompatActivity {
 //            String f = getExternalFilesDir(null).toString() + "/chinmayjain08/images/2751610900940158259_2751610900940158259.jpg";
 //            Log.d(TAG, f);
 //            CJImageUtil.removeWhiteBorder(BitmapFactory.decodeFile(f));
-            new RESTServer(instaClient).startListening();
-//            CountWriteReadStream s = new CountWriteReadStream();
-//            OutputStream s = new ByteArrayOutputStream();
-//            Bitmap b = instaClient.bitmapByFileName("2751610900940158259_2751610900940158259.jpg");
-//            b.compress(Bitmap.CompressFormat.JPEG, 100, s);
-//            s.close();
-//            Log.d(TAG, s.getCount() + " " + s.isWriting());
+//            new RESTServer(instaClient).startListening();
+//            instaClient.act(InstaClient.TEST);
+
         } catch (Exception e) {
             Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
         }
     }
 
+    ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            Log.d(TAG, "MainActivity connected to MainService");
+            MainService.MainBinder binder = (MainService.MainBinder) iBinder;
+            mainService = binder.getService();
+            addClickListeners();
+            onCreateTest();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            Log.d(TAG, "MainActivity disconnected from MainService");
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        bindService(new Intent(this, MainService.class), serviceConnection, Context.BIND_AUTO_CREATE);
 
         readScripts();
 
@@ -132,10 +141,6 @@ public class MainActivity extends AppCompatActivity {
         spEditor = sharedPreferences.edit();
 
         initializeUI();
-        addClickListeners();
-
-        createInstaClient();
-        onCreateTest();
     }
 
     @Override

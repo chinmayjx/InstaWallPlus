@@ -48,6 +48,7 @@ public class InstaClient {
     String username, sessionID, assetsDir;
     String metaPath, imagePath;
     JSONArray savedPostsJSON;
+    JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
@@ -123,7 +124,13 @@ public class InstaClient {
     }
 
     void test() {
-
+        try{
+            String postID = getPostCodeToID("Ciie1XDNzs7");
+            JSONObject postInfo = getPostInfo(postID);
+            setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getRandomImageInPost(postInfo))));
+        } catch (Exception e){
+            Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
+        }
     }
 
     Bitmap bitmapByFileName(String name){
@@ -164,7 +171,7 @@ public class InstaClient {
         JSONArray savedPosts = getSavedPostsJSON();
         return savedPosts.getJSONObject((int) (Math.random() * savedPosts.length()));
     }
-
+    // return random postID from postInfo
     String getRandomImageInPost(JSONObject postInfo) throws JSONException {
         try {
             JSONArray carouselMedia = PostInfo.carouselMedia(postInfo);
@@ -338,6 +345,39 @@ public class InstaClient {
         JSONObject res = new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
         con.getInputStream().close();
         return res;
+    }
+
+    String getStringResponse(HttpURLConnection con) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+        StringBuilder res = new StringBuilder();
+        String line;
+        while((line = in.readLine()) != null){
+            res.append(line);
+            res.append('\n');
+        }
+        in.close();
+        return res.toString();
+    }
+
+    public String getPostCodeToID(String code){
+        try {
+            Log.d(TAG, "get post id from code");
+            HttpURLConnection con = getConnection("https://www.instagram.com/p/" + code);
+            String res = getStringResponse(con);
+            Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\".*id=(\\d+)").matcher(res);
+            String postID = null;
+            while (matcher.find()){
+                Log.d(TAG, "match: ");
+                for (int i = 0; i <= matcher.groupCount(); i++) {
+                    Log.d(TAG, "\tgroup: " + matcher.group(i));
+                }
+                postID = matcher.group(1);
+            }
+            return postID;
+        } catch (Exception e) {
+            Log.e(TAG, Log.getStackTraceString(e));
+        }
+        return null;
     }
 
     public JSONObject getUserInfo() {
