@@ -1,5 +1,7 @@
 package cj.instawall.plus;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.util.Log;
 
 import org.json.JSONException;
@@ -7,7 +9,10 @@ import org.json.JSONException;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PipedOutputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -25,6 +30,48 @@ public class RESTServer {
     InstaClient instaClient;
     ExecutorService executor;
 
+    class ResponseWriter {
+        PrintWriter printer;
+        BufferedOutputStream out;
+
+        public ResponseWriter(Socket client, int code) throws IOException {
+            out = new BufferedOutputStream(client.getOutputStream());
+            printer = new PrintWriter(out);
+            printer.println("HTTP/1.1 " + code + " OK");
+        }
+
+        public void header(String name, String value) {
+            printer.println(name + ": " + value);
+        }
+
+        public void body(String res) {
+            header("content-length", String.valueOf(res.length()));
+            printer.println("");
+            printer.print(res);
+            printer.close();
+        }
+
+        public void body(Path path) throws IOException {
+            header("content-length", String.valueOf(Files.size(path)));
+            printer.println("");
+            printer.flush();
+            Files.copy(path, out);
+            out.close();
+        }
+
+        public void body(InputStream in, long size) throws IOException {
+            header("content-length", String.valueOf(size));
+            printer.println("");
+            printer.flush();
+            byte[] buf = new byte[1024];
+            int cnt;
+            while ((cnt = in.read(buf)) != -1) {
+                out.write(buf, 0, cnt);
+            }
+            out.close();
+        }
+    }
+
     public RESTServer(InstaClient instaClient) {
         this.instaClient = instaClient;
         executor = Executors.newCachedThreadPool();
@@ -34,7 +81,7 @@ public class RESTServer {
         executor.execute(this::start);
     }
 
-    void start() {
+    private void start() {
         Log.d(TAG, "RESTServer started");
         try {
             ServerSocket server = new ServerSocket(4444);
@@ -94,6 +141,9 @@ public class RESTServer {
                 case "collage":
                     sendString(client, "collage");
                     break;
+                case "remove-border":
+                    sendBitmap(client, CJImageUtil.removeWhiteBorder(instaClient.bitmapByFileName(pathTokens[1])));
+                    break;
                 default:
                     sendString(client, "404 NOT FOUND");
             }
@@ -101,24 +151,22 @@ public class RESTServer {
     }
 
     void sendString(Socket client, String response) throws IOException {
-        PrintWriter out = new PrintWriter(client.getOutputStream());
-        out.println("HTTP/1.1 200 OK");
-        out.println("Content-Length: " + response.length());
-        out.println("");
-        out.print(response);
-        out.flush();
-        out.close();
+        ResponseWriter writer = new ResponseWriter(client, 200);
+        writer.body(response);
     }
+
     void sendFile(Socket client, Path path) throws IOException {
-        BufferedOutputStream out = new BufferedOutputStream(client.getOutputStream());
-        PrintWriter printer = new PrintWriter(out);
-        printer.println("HTTP/1.1 200 OK");
-        printer.println("Content-Length: " + Files.size(path));
-        printer.println("Content-Type: image/jpeg");
-        printer.println("");
-        printer.flush();
-        Files.copy(path, out);
-        out.flush();
+        ResponseWriter writer = new ResponseWriter(client, 200);
+        writer.header("content-type", "image/jpeg");
+        writer.body(path);
+    }
+
+    void sendBitmap(Socket client, Bitmap img) throws IOException {
+        ResponseWriter writer = new ResponseWriter(client, 200);
+        writer.header("content-type", "image/jpeg");
+        CountWriteReadStream out = new CountWriteReadStream();
+        img.compress(Bitmap.CompressFormat.JPEG, 100, out);
         out.close();
+        writer.body(out.getInputStream(), out.getCount());
     }
 }

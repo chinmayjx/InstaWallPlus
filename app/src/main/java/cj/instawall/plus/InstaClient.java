@@ -126,6 +126,10 @@ public class InstaClient {
 
     }
 
+    Bitmap bitmapByFileName(String name){
+        return BitmapFactory.decodeFile(Paths.get(imagePath, name).toString());
+    }
+
     void setRandomWallpaper() {
         try {
             setWallpaper(getRandomImage());

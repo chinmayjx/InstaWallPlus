@@ -7,6 +7,8 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -24,7 +26,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -96,6 +104,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    void onCreateTest() {
+        try {
+//            String f = getExternalFilesDir(null).toString() + "/chinmayjain08/images/2751610900940158259_2751610900940158259.jpg";
+//            Log.d(TAG, f);
+//            CJImageUtil.removeWhiteBorder(BitmapFactory.decodeFile(f));
+            new RESTServer(instaClient).startListening();
+//            CountWriteReadStream s = new CountWriteReadStream();
+//            OutputStream s = new ByteArrayOutputStream();
+//            Bitmap b = instaClient.bitmapByFileName("2751610900940158259_2751610900940158259.jpg");
+//            b.compress(Bitmap.CompressFormat.JPEG, 100, s);
+//            s.close();
+//            Log.d(TAG, s.getCount() + " " + s.isWriting());
+        } catch (Exception e) {
+            Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
         addClickListeners();
 
         createInstaClient();
-        new RESTServer(instaClient).startListening();
+        onCreateTest();
     }
 
     @Override
