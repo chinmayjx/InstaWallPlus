@@ -12,9 +12,14 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import org.json.JSONException;
+
+import java.io.IOException;
+
 public class MainService extends Service {
     public static final String TAG = "CJ";
     public static final String SET_RANDOM_WALLPAPER = "cj.instawall.plus.random_wallpaper";
+    public static final String WALLPAPER_FROM_CODE = "cj.instawall.plus.wallpaper_from_code";
     InstaClient instaClient;
 
     void launchForeG() {
@@ -32,7 +37,7 @@ public class MainService extends Service {
         startForeground(1, notification);
     }
 
-    public void createInstaClient(){
+    public void createInstaClient() {
         try {
             instaClient = new InstaClient(this);
             Log.d(TAG, "Updated InstaClient");
@@ -52,11 +57,12 @@ public class MainService extends Service {
     @Override
     public void onDestroy() {
         Log.d(TAG, "MainService destroyed");
+        instaClient.saveFiles();
         super.onDestroy();
     }
 
-    class MainBinder extends Binder{
-        MainService getService(){
+    class MainBinder extends Binder {
+        MainService getService() {
             return MainService.this;
         }
     }
@@ -72,12 +78,25 @@ public class MainService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand: " + intent.getAction());
-        switch (intent.getAction()) {
-            case SET_RANDOM_WALLPAPER:
-                if (instaClient != null) {
-                    instaClient.act(InstaClient.RANDOM_WALLPAPER);
-                }
-                break;
+        try {
+            switch (intent.getAction()) {
+                case SET_RANDOM_WALLPAPER:
+                    if (instaClient != null) {
+                        instaClient.act(InstaClient.RANDOM_WALLPAPER);
+                    }
+                    break;
+                case WALLPAPER_FROM_CODE:
+                    instaClient.executor.execute(() -> {
+                        try {
+                            instaClient.setWallpaperFromCode(intent.getStringExtra(Intent.EXTRA_TEXT));
+                        } catch (Exception e) {
+                            Log.e(TAG, "can't set wallpaper from code" + Log.getStackTraceString(e));
+                        }
+                    });
+                    break;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "onStartCommand: " + Log.getStackTraceString(e));
         }
         return super.onStartCommand(intent, flags, startId);
     }

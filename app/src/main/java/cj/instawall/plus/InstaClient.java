@@ -124,20 +124,18 @@ public class InstaClient {
     }
 
     void test() {
-        try{
-            String postID = getPostCodeToID("Ciie1XDNzs7");
-            JSONObject postInfo = getPostInfo(postID);
-            setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getRandomImageInPost(postInfo))));
-        } catch (Exception e){
+        try {
+
+        } catch (Exception e) {
             Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
         }
     }
 
-    Bitmap bitmapByFileName(String name){
+    Bitmap bitmapByFileName(String name) {
         return BitmapFactory.decodeFile(Paths.get(imagePath, name).toString());
     }
 
-    Path pathByFileName(String name){
+    Path pathByFileName(String name) {
         return Paths.get(imagePath, name);
     }
 
@@ -149,28 +147,75 @@ public class InstaClient {
         }
     }
 
+    void setWallpaperFromCode(String code) throws JSONException, IOException {
+        String postID = getPostCodeToID(code);
+        JSONObject postInfo = getPostInfo(postID);
+        setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getRandomImageInPost(postInfo))));
+    }
+
+    private int commitCount = 0;
+    private final int commitFrequency = 10;
+
+    void commit() {
+        commitCount++;
+        if (commitCount >= commitFrequency) {
+            Log.d(TAG, "commitLimit reached, saving files");
+            saveFiles();
+            commitCount = 0;
+        }
+    }
+
+    void saveFiles() {
+        try {
+            Files.copy(new ByteArrayInputStream(postCodeToID.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(assetsDir, "post_code_to_id.json"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            Log.e(TAG, "saveFiles: " + Log.getStackTraceString(e));
+        }
+    }
+
+    JSONObject getPostCodeToIDJSON() throws JSONException {
+        if (postCodeToID != null) return postCodeToID;
+        try {
+            postCodeToID = new JSONObject(new String(Files.readAllBytes(Paths.get(assetsDir, "post_code_to_id.json"))));
+        } catch (NoSuchFileException e) {
+            try {
+                postCodeToID = new JSONObject("{}");
+            } catch (Exception f) {
+            }
+        } catch (Exception f) {
+            Log.e(TAG, "getPostCodeToIDJSON: " + Log.getStackTraceString(f));
+        }
+        JSONArray savedPosts = getSavedPostsJSON();
+        for (int i = 0; i < savedPosts.length(); i++) {
+            JSONObject node = savedPosts.getJSONObject(i).optJSONObject("node");
+            if(node != null){
+                postCodeToID.put(node.optString("shortcode"), node.optString("id"));
+            }
+        }
+        return postCodeToID;
+    }
+
     JSONArray getSavedPostsJSON() {
         if (savedPostsJSON != null) return savedPostsJSON;
         try {
             String savedPosts = new String(Files.readAllBytes(Paths.get(assetsDir, username, "saved_posts.json")));
-            JSONArray ob = new JSONArray(savedPosts);
-            return ob;
+            savedPostsJSON = new JSONArray(savedPosts);
         } catch (NoSuchFileException e) {
             try {
-                return new JSONArray("[]");
+                savedPostsJSON = new JSONArray("[]");
             } catch (Exception f) {
-                Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
             }
         } catch (Exception f) {
             Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
         }
-        return null;
+        return savedPostsJSON;
     }
 
     JSONObject getRandomSavedItem() throws JSONException {
         JSONArray savedPosts = getSavedPostsJSON();
         return savedPosts.getJSONObject((int) (Math.random() * savedPosts.length()));
     }
+
     // return random postID from postInfo
     String getRandomImageInPost(JSONObject postInfo) throws JSONException {
         try {
@@ -246,11 +291,10 @@ public class InstaClient {
         Bitmap img = BitmapFactory.decodeFile(image.toString());
         String requiredDimensions = imageInfo.getString("width") + " x " + imageInfo.getString("height");
         String actualDimensions = img.getWidth() + " x " + img.getHeight();
-        if(requiredDimensions.equals(actualDimensions)){
+        if (requiredDimensions.equals(actualDimensions)) {
             Log.d(TAG, "qualityCheck: pass");
             return true;
-        }
-        else{
+        } else {
             Log.d(TAG, "qualityCheck: fail, replacing local file.");
             Log.d(TAG, "required dimensions: " + requiredDimensions);
             Log.d(TAG, "actual dimensions: " + actualDimensions);
@@ -271,14 +315,13 @@ public class InstaClient {
                 String oldFileName = filenameFromUrl(iv.getString("url"));
                 Log.d(TAG, oldFileName);
                 if (Files.exists(Paths.get(imagePath, oldFileName)) || Files.exists(Paths.get(imagePath, newFileName))) {
-                    if(Files.exists(Paths.get(imagePath, oldFileName))){
+                    if (Files.exists(Paths.get(imagePath, oldFileName))) {
                         Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
                         Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
-                    }
-                    else{
+                    } else {
                         Log.d(TAG, "File already exists, " + newFileName);
                     }
-                    if(qualityCheck(Paths.get(imagePath, newFileName), iv)) break;
+                    if (qualityCheck(Paths.get(imagePath, newFileName), iv)) break;
                 }
                 String url = iv.getString("url");
                 Log.d(TAG, "downloading image: " + url);
@@ -319,13 +362,6 @@ public class InstaClient {
         }
     }
 
-    String getRandomPost() throws JSONException {
-        String pid = getRandomSavedItem().getJSONObject("node").getString("id");
-        Log.d(TAG, pid);
-//        Log.d(TAG, getPostInfo(pid).toString(2));;
-        return null;
-    }
-
     String getSessionID(String cookie) {
         Matcher m = Pattern.compile("sessionid=(\\d*)").matcher(cookie);
         if (m.find()) {
@@ -351,7 +387,7 @@ public class InstaClient {
         BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
         StringBuilder res = new StringBuilder();
         String line;
-        while((line = in.readLine()) != null){
+        while ((line = in.readLine()) != null) {
             res.append(line);
             res.append('\n');
         }
@@ -359,19 +395,27 @@ public class InstaClient {
         return res.toString();
     }
 
-    public String getPostCodeToID(String code){
+    public String getPostCodeToID(String code) {
         try {
+            if(getPostCodeToIDJSON().has(code)){
+                Log.d(TAG, "found postID for code locally, " + code + " : " + getPostCodeToIDJSON().getString(code));
+                return getPostCodeToIDJSON().getString(code);
+            }
             Log.d(TAG, "get post id from code");
             HttpURLConnection con = getConnection("https://www.instagram.com/p/" + code);
             String res = getStringResponse(con);
-            Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\".*id=(\\d+)").matcher(res);
+            Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\"[^>]*media\\?id=(\\d+)").matcher(res);
             String postID = null;
-            while (matcher.find()){
+            while (matcher.find()) {
                 Log.d(TAG, "match: ");
                 for (int i = 0; i <= matcher.groupCount(); i++) {
                     Log.d(TAG, "\tgroup: " + matcher.group(i));
                 }
                 postID = matcher.group(1);
+            }
+            if(postID != null){
+                getPostCodeToIDJSON().put(code, postID);
+                commit();
             }
             return postID;
         } catch (Exception e) {

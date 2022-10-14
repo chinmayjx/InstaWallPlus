@@ -59,8 +59,27 @@
                 android:layout_height="match_parent"
                 android:layout_marginLeft="10dp"
                 android:text="Start REST" />
+            <Button
+                android:typeface="monospace"
+                android:id="@+id/F"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="10dp"
+                android:text="F" />
+            <Button
+                android:typeface="monospace"
+                android:id="@+id/G"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="10dp"
+                android:text="G" />
+            <Button
+                android:typeface="monospace"
+                android:id="@+id/H"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginLeft="10dp"
+                android:text="H" />
         </LinearLayout>
     </HorizontalScrollView>
-
-
 </LinearLayout>

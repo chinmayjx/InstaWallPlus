@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
 
     FrameLayout wvHolder;
     InstaWebView wv;
-    Button A, B, C, D, E;
+    Button A, B, C, D, E, F, G, H;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
     String interceptor;
@@ -67,7 +67,10 @@ public class MainActivity extends AppCompatActivity {
         C = findViewById(R.id.C);
         D = findViewById(R.id.D);
         E = findViewById(R.id.E);
-        Button[] btns = {A, B, C, D, E};
+        F = findViewById(R.id.F);
+        G = findViewById(R.id.G);
+        H = findViewById(R.id.H);
+        Button[] btns = {A, B, C, D, E, F, G, H};
         for (Button b : btns) {
             b.setTransformationMethod(null);
         }
@@ -87,6 +90,9 @@ public class MainActivity extends AppCompatActivity {
         E.setOnClickListener(v -> {
             new RESTServer(mainService.instaClient).startListening();
         });
+        F.setOnClickListener(v -> {
+            mainService.instaClient.act(InstaClient.TEST);
+        });
     }
 
     void readScripts() {
@@ -105,7 +111,8 @@ public class MainActivity extends AppCompatActivity {
 //            Log.d(TAG, f);
 //            CJImageUtil.removeWhiteBorder(BitmapFactory.decodeFile(f));
 //            new RESTServer(instaClient).startListening();
-//            instaClient.act(InstaClient.TEST);
+            mainService.instaClient.act(InstaClient.TEST);
+
 
         } catch (Exception e) {
             Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
