@@ -91,7 +91,32 @@ public class MainActivity extends AppCompatActivity {
             new RESTServer(mainService.instaClient).startListening();
         });
         F.setOnClickListener(v -> {
-            mainService.instaClient.act_test();
+//            mainService.instaClient.act_test();
+            InstaClient.setCurrentUser("chinmayjain08");
+            InstaClient.commitAuthFile();
+            InstaClient.initializeVariables();
+        });
+        G.setOnClickListener(v -> {
+            wv.loadUrl("about:blank");
+            CookieManager.getInstance().removeAllCookies(null);
+            String user = InstaClient.getNextUser();
+            String cookie = InstaClient.getUserProperty(user, "cookie");
+            Log.d(TAG, "cookie set: " + cookie);
+            InstaWebView.setCookie("https://www.instagram.com", cookie);
+            InstaWebView.setCookie("https://i.instagram.com", cookie);
+//            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
+
+            InstaClient.setCurrentUser(user);
+            InstaClient.commitAuthFile();
+            InstaClient.initializeVariables();
+
+            G.setText(user);
+
+        });
+        H.setOnClickListener(v -> {
+            CookieManager.getInstance().removeAllCookies(null);
+            CookieManager.getInstance().flush();
+            wv.loadUrl("https://www.instagram.com");
         });
     }
 
@@ -121,6 +146,8 @@ public class MainActivity extends AppCompatActivity {
             mainService = binder.getService();
             addClickListeners();
             onCreateTest();
+
+            G.setText(InstaClient.username);
         }
 
         @Override

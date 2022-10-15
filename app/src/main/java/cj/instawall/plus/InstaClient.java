@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -30,8 +31,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,18 +44,20 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class InstaClient {
-    final String TAG = "CJ";
+    public static final String TAG = "CJ";
     public static final String META = "meta";
     public static final String IMAGES = "images";
-    Map<String, String> headers;
     ExecutorService executor;
-    String username, sessionID, assetsDir;
-    String metaPath, imagePath;
-    JSONArray savedPostsJSON;
     JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
+    static JSONArray savedPostsJSON;
+    static Map<String, String> headers;
+    static JSONObject authInfo;
+    static Path authInfoFile;
+
+    static String username, appID, cookie, sessionID, imagePath, metaPath, assetsDir;
 
     static class PostInfo {
         public static JSONObject noCarouselImage(JSONObject postInfo) throws JSONException {
@@ -74,28 +79,130 @@ public class InstaClient {
         }
     }
 
+    public static void initializeVariables() {
+        try {
+            savedPostsJSON = null;
+            username = authInfo.getString("current_user");
+            appID = authInfo.getString("app_id");
+            cookie = getUserProperty(username, "cookie");
+            sessionID = getSessionID(cookie);
+
+            headers = new HashMap<>();
+            headers.put("cookie", cookie);
+            headers.put("X-IG-App-ID", appID);
+
+            Files.createDirectories(Paths.get(assetsDir, username, IMAGES));
+            Files.createDirectories(Paths.get(assetsDir, username, META));
+
+            metaPath = Paths.get(assetsDir, username, META).toString();
+            imagePath = Paths.get(assetsDir, username, IMAGES).toString();
+
+        } catch (Exception e) {
+            Log.e(TAG, "initializeVariables: " + Log.getStackTraceString(e));
+        }
+    }
+
+    public static void commitAuthFile() {
+        try (InputStream in = new ByteArrayInputStream(authInfo.toString(2).getBytes(StandardCharsets.UTF_8))) {
+            Files.copy(in, authInfoFile, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            Log.e(TAG, "commitAuthFile: " + Log.getStackTraceString(e));
+        }
+    }
+
+    public static void setCurrentUser(String username) {
+        try {
+            authInfo.put("current_user", username);
+            InstaClient.username = username;
+        } catch (JSONException e) {
+            Log.e(TAG, "setCurrentUser: " + Log.getStackTraceString(e));
+        }
+    }
+
+    public static ArrayList<String> getLoggedInUsers(){
+        try {
+            ArrayList<String> arr = new ArrayList<>();
+            JSONArray ja = authInfo.getJSONObject("user_data").names();
+            for (int i = 0; i < ja.length(); i++) {
+                arr.add(ja.getString(i));
+            }
+            return arr;
+        } catch (Exception e) {
+            Log.e(TAG, "getLoggedInUsers: " + Log.getStackTraceString(e));
+        }
+        return new ArrayList<>();
+    }
+
+    public static String getNextUser(){
+        ArrayList<String> users = getLoggedInUsers();
+        for (int i = 0; i < users.size(); i++) {
+            if(users.get(i).equals(username)) return users.get((i+1)%users.size());
+        }
+        return null;
+    }
+
+    public static void switchToUser(){
+
+    }
+
+    public static void setAppID(String appID) {
+        try {
+            authInfo.put("app_id", appID);
+        } catch (JSONException e) {
+            Log.e(TAG, "setAppID: " + Log.getStackTraceString(e));
+        }
+    }
+
+    public static void setCurrentUserProperty(String property, String value) {
+        if (username != null) {
+            setUserProperty(username, property, value);
+        } else {
+            Log.e(TAG, "failed to set user property, because current user in null");
+        }
+    }
+
+    public static void setUserProperty(String username, String property, String value) {
+        try {
+            JSONObject userData = authInfo.getJSONObject("user_data");
+            if (!userData.has(username)) userData.put(username, new JSONObject("{}"));
+            userData.getJSONObject(username).put(property, value);
+        } catch (JSONException e) {
+            Log.e(TAG, "setUserProperty: " + Log.getStackTraceString(e));
+        }
+    }
+
+    public static String getUserProperty(String username, String property) {
+        try {
+            JSONObject userData = authInfo.getJSONObject("user_data").getJSONObject(username);
+            return userData.getString(property);
+        } catch (JSONException e) {
+            Log.e(TAG, "failed to get user property, " + Log.getStackTraceString(e));
+        }
+        return null;
+    }
+
+
     public InstaClient(Context context) throws Exception {
-        sharedPreferences = context.getSharedPreferences(MainActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
-        spEditor = sharedPreferences.edit();
-        String cookie = sharedPreferences.getString("cookie", null);
-        String appID = sharedPreferences.getString("X-IG-App-ID", null);
-        username = sharedPreferences.getString("username", null);
+        authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
+        if (!Files.exists(authInfoFile)) {
+            try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
+                Files.copy(in, authInfoFile);
+            }
+            throw new Exception("no auth info file found, created one");
+        }
+        authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
+        Log.d(TAG, "authInfo: " + authInfo.toString(2));
+
+        this.executor = Executors.newSingleThreadExecutor();
+        this.context = context;
+        assetsDir = context.getExternalFilesDir(null).toString();
+
+        initializeVariables();
+
         if (cookie == null || appID == null || username == null) {
             Log.e(TAG, "Can't create InstaClient");
-            throw new Exception("Somethings null for InstaClient");
+            throw new Exception("something's null for InstaClient");
         }
-        headers = new HashMap<>();
-        headers.put("cookie", cookie);
-        headers.put("X-IG-App-ID", appID);
-        this.executor = Executors.newSingleThreadExecutor();
-        this.sessionID = getSessionID(headers.get("cookie"));
-        this.context = context;
-        this.assetsDir = context.getExternalFilesDir(null).toString();
-
-        Files.createDirectories(Paths.get(assetsDir, username, IMAGES));
-        Files.createDirectories(Paths.get(assetsDir, username, META));
-        this.metaPath = Paths.get(assetsDir, username, META).toString();
-        this.imagePath = Paths.get(assetsDir, username, IMAGES).toString();
     }
 
 
@@ -384,7 +491,7 @@ public class InstaClient {
         }
     }
 
-    String getSessionID(String cookie) {
+    static String getSessionID(String cookie) {
         Matcher m = Pattern.compile("sessionid=(\\d*)").matcher(cookie);
         if (m.find()) {
             return m.group(1);

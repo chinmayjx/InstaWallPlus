@@ -3,6 +3,7 @@ package cj.instawall.plus;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.webkit.ConsoleMessage;
@@ -17,27 +18,32 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
 
 @SuppressLint("SetJavaScriptEnabled")
 public class InstaWebView extends WebView {
-    final String TAG = "CJ";
+    static final String TAG = "CJ";
     Context context;
     Runnable loginCallback;
     String interceptor;
-    SharedPreferences.Editor editor;
+
+    public static void setCookie(String url, String cookie){
+        String[] cookies = cookie.split(";");
+        Log.d(TAG, "setCookie: " + Arrays.toString(cookies));
+        for (int i = 0; i < cookies.length; i++) {
+            CookieManager.getInstance().setCookie(url, cookies[i]);
+        }
+    }
 
     public InstaWebView(@NonNull Context context, Runnable loginCallback, String interceptor) {
         super(context);
-
+        this.setBackgroundColor(Color.BLACK);
         this.context = context;
         this.loginCallback = loginCallback;
         this.interceptor = interceptor;
-
-        editor = context.getSharedPreferences(
-                MainActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE).edit();
 
         this.getSettings().setDomStorageEnabled(true);
         this.getSettings().setJavaScriptEnabled(true);
@@ -53,30 +59,27 @@ public class InstaWebView extends WebView {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (request.getUrl().toString().contains("api/v1/feed/timeline") &&
                         request.getMethod().equals("POST")) {
-                    Map<String,String> headers = request.getRequestHeaders();
-//                    for (String h : headers.keySet()) {
-//                        Log.d(TAG, h + ":" + headers.get(h));
-//                    }
-                    editor.putString("X-IG-App-ID", headers.get("X-IG-App-ID"));
-                    editor.putString("cookie", CookieManager.getInstance()
-                            .getCookie("https://www.instagram.com"));
-                    editor.apply();
-                    loginCallback.run();
+                    Map<String, String> headers = request.getRequestHeaders();
 
-//                    Log.d(TAG, "cookie: " + CookieManager.getInstance()
-//                            .getCookie("https://www.instagram.com"));
+                    if (headers.containsKey("X-IG-App-ID"))
+                        InstaClient.setAppID(headers.get("X-IG-App-ID"));
+
+                    InstaClient.setCurrentUserProperty("cookie", CookieManager.getInstance()
+                            .getCookie("https://www.instagram.com"));
+                    InstaClient.commitAuthFile();
+                    loginCallback.run();
                 }
                 return super.shouldInterceptRequest(view, request);
             }
         });
-        this.setWebChromeClient(new WebChromeClient(){
+        this.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
                 String msg = consoleMessage.message();
-                if(msg.startsWith("set_username:")){
+                if (msg.startsWith("set_username:")) {
                     String username = msg.substring("set_username:".length());
-                    editor.putString("username", username);
-                    editor.apply();
+                    InstaClient.setCurrentUser(username);
+                    InstaClient.commitAuthFile();
                     Log.d(TAG, "Username set to " + username);
                 }
                 Log.d(TAG, msg);
