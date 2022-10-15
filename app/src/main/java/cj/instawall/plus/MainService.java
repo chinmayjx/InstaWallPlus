@@ -82,17 +82,11 @@ public class MainService extends Service {
             switch (intent.getAction()) {
                 case SET_RANDOM_WALLPAPER:
                     if (instaClient != null) {
-                        instaClient.act(InstaClient.RANDOM_WALLPAPER);
+                        instaClient.act_setRandomWallpaper();
                     }
                     break;
                 case WALLPAPER_FROM_CODE:
-                    instaClient.executor.execute(() -> {
-                        try {
-                            instaClient.setWallpaperFromCode(intent.getStringExtra(Intent.EXTRA_TEXT));
-                        } catch (Exception e) {
-                            Log.e(TAG, "can't set wallpaper from code" + Log.getStackTraceString(e));
-                        }
-                    });
+                    instaClient.act_setWallpaperFromCode(intent.getStringExtra(Intent.EXTRA_TEXT));
                     break;
             }
         } catch (Exception e) {

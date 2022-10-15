@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -97,33 +98,54 @@ public class InstaClient {
         this.imagePath = Paths.get(assetsDir, username, IMAGES).toString();
     }
 
-    public static final int TEST = 0;
-    public static final int GET_USER_INFO = 1;
-    public static final int GET_SAVED_POSTS = 2;
-    public static final int CONTINUE_LAST_SYNC = 3;
-    public static final int RANDOM_WALLPAPER = 4;
 
-    public void act(int code) {
-        switch (code) {
-            case GET_USER_INFO:
-                executor.execute(this::getUserInfo);
-                break;
-            case GET_SAVED_POSTS:
-                executor.execute(() -> getSavedPosts(false));
-                break;
-            case CONTINUE_LAST_SYNC:
-                executor.execute(() -> getSavedPosts(true));
-                break;
-            case RANDOM_WALLPAPER:
-                executor.execute(this::setRandomWallpaper);
-                break;
-            case TEST:
-                executor.execute(this::test);
-                break;
-        }
+    // actions --------------------------------------------------
+    public void act_setRandomWallpaper() {
+        executor.execute(this::setRandomWallpaper);
     }
 
-    void test() {
+    public void act_continueLastSync() {
+        executor.execute(() -> getSavedPosts(true));
+    }
+
+    public void act_getSavedPosts() {
+        executor.execute(() -> getSavedPosts(false));
+    }
+
+    public void act_getUserInfo() {
+        executor.execute(this::getUserInfo);
+    }
+
+    public void act_setWallpaperFromCode(String code) {
+        executor.execute(() -> {
+            try {
+                setWallpaperFromCode(code);
+            } catch (Exception e) {
+                Log.e(TAG, "can't set wallpaper from code" + Log.getStackTraceString(e));
+            }
+        });
+    }
+
+    public Path act_getRandomImage() {
+        try {
+            Future<Path> future = executor.submit(this::getRandomImage);
+            return future.get();
+        } catch (Exception e) {
+            Log.e(TAG, "act_getRandomImage: " + Log.getStackTraceString(e));
+        }
+        return null;
+    }
+
+    public void act_setWallpaper(Path path) {
+        executor.execute(() -> setWallpaper(path));
+    }
+
+    public void act_test() {
+        executor.execute(this::test);
+    }
+    // ----------------------------------------------------------
+
+    private void test() {
         try {
 
         } catch (Exception e) {
@@ -139,7 +161,7 @@ public class InstaClient {
         return Paths.get(imagePath, name);
     }
 
-    void setRandomWallpaper() {
+    private void setRandomWallpaper() {
         try {
             setWallpaper(getRandomImage());
         } catch (Exception e) {
@@ -147,7 +169,7 @@ public class InstaClient {
         }
     }
 
-    void setWallpaperFromCode(String code) throws JSONException, IOException {
+    private void setWallpaperFromCode(String code) throws JSONException, IOException {
         String postID = getPostCodeToID(code);
         JSONObject postInfo = getPostInfo(postID);
         setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getRandomImageInPost(postInfo))));
@@ -156,7 +178,7 @@ public class InstaClient {
     private int commitCount = 0;
     private final int commitFrequency = 10;
 
-    void commit() {
+    private void commit() {
         commitCount++;
         if (commitCount >= commitFrequency) {
             Log.d(TAG, "commitLimit reached, saving files");
@@ -173,7 +195,7 @@ public class InstaClient {
         }
     }
 
-    JSONObject getPostCodeToIDJSON() throws JSONException {
+    private JSONObject getPostCodeToIDJSON() throws JSONException {
         if (postCodeToID != null) return postCodeToID;
         try {
             postCodeToID = new JSONObject(new String(Files.readAllBytes(Paths.get(assetsDir, "post_code_to_id.json"))));
@@ -188,7 +210,7 @@ public class InstaClient {
         JSONArray savedPosts = getSavedPostsJSON();
         for (int i = 0; i < savedPosts.length(); i++) {
             JSONObject node = savedPosts.getJSONObject(i).optJSONObject("node");
-            if(node != null){
+            if (node != null) {
                 postCodeToID.put(node.optString("shortcode"), node.optString("id"));
             }
         }
@@ -226,7 +248,7 @@ public class InstaClient {
         }
     }
 
-    Path getRandomImage() throws JSONException, IOException {
+    private Path getRandomImage() throws JSONException, IOException {
         JSONObject randomPost = getPostInfo(SavedItem.postID(getRandomSavedItem()));
         String randomImage = getRandomImageInPost(randomPost);
         return Paths.get(imagePath, getImageInPost(randomPost, randomImage));
@@ -331,7 +353,7 @@ public class InstaClient {
         return newFileName;
     }
 
-    void setWallpaper(Path path) {
+    private void setWallpaper(Path path) {
         try {
             Bitmap bitmap = BitmapFactory.decodeFile(path.toString());
             bitmap = CJImageUtil.removeWhiteBorder(bitmap);
@@ -370,20 +392,20 @@ public class InstaClient {
         return null;
     }
 
-    HttpURLConnection getConnection(String urlString) throws IOException {
+    private HttpURLConnection getConnection(String urlString) throws IOException {
         URL url = new URL(urlString);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         for (String h : headers.keySet()) con.setRequestProperty(h, headers.get(h));
         return con;
     }
 
-    JSONObject getJSONResponse(HttpURLConnection con) throws IOException, JSONException {
+    private JSONObject getJSONResponse(HttpURLConnection con) throws IOException, JSONException {
         JSONObject res = new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
         con.getInputStream().close();
         return res;
     }
 
-    String getStringResponse(HttpURLConnection con) throws IOException {
+    private String getStringResponse(HttpURLConnection con) throws IOException {
         BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
         StringBuilder res = new StringBuilder();
         String line;
@@ -395,9 +417,9 @@ public class InstaClient {
         return res.toString();
     }
 
-    public String getPostCodeToID(String code) {
+    private String getPostCodeToID(String code) {
         try {
-            if(getPostCodeToIDJSON().has(code)){
+            if (getPostCodeToIDJSON().has(code)) {
                 Log.d(TAG, "found postID for code locally, " + code + " : " + getPostCodeToIDJSON().getString(code));
                 return getPostCodeToIDJSON().getString(code);
             }
@@ -413,7 +435,7 @@ public class InstaClient {
                 }
                 postID = matcher.group(1);
             }
-            if(postID != null){
+            if (postID != null) {
                 getPostCodeToIDJSON().put(code, postID);
                 commit();
             }
@@ -424,7 +446,7 @@ public class InstaClient {
         return null;
     }
 
-    public JSONObject getUserInfo() {
+    private JSONObject getUserInfo() {
         try {
             Log.d(TAG, "Getting user info");
             HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/users/web_profile_info/?username=" + username);
@@ -436,7 +458,7 @@ public class InstaClient {
         return null;
     }
 
-    public JSONArray getSavedPosts(boolean continueLast) {
+    private void getSavedPosts(boolean continueLast) {
 
         HashSet<String> set = new HashSet<>();
         JSONArray edges = getSavedPostsJSON();
@@ -467,11 +489,10 @@ public class InstaClient {
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
-        return edges;
     }
 
-    public void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
-                                 int repeatCount, int repeatLimit) {
+    private void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
+                                  int repeatCount, int repeatLimit) {
         try {
             JSONArray newEdges = savedMedia.optJSONArray("edges");
             if (newEdges != null) {

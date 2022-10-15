@@ -133,7 +133,7 @@ public class RESTServer {
         if (title[0].equals("GET")) {
             switch (pathTokens[0]) {
                 case "random-image":
-                    sendFile(client, instaClient.getRandomImage());
+                    sendFile(client, instaClient.act_getRandomImage());
                     break;
                 case "image":
                     sendFile(client, Paths.get(instaClient.imagePath, pathTokens[1]));
@@ -145,7 +145,7 @@ public class RESTServer {
                     sendBitmap(client, CJImageUtil.removeWhiteBorder(instaClient.bitmapByFileName(pathTokens[1])));
                     break;
                 case "set-wallpaper":
-                    instaClient.setWallpaper(instaClient.pathByFileName(pathTokens[1]));
+                    instaClient.act_setWallpaper(instaClient.pathByFileName(pathTokens[1]));
                     sendString(client, "OK boss");
                     break;
                 default:

@@ -79,19 +79,19 @@ public class MainActivity extends AppCompatActivity {
     void addClickListeners() {
         A.setOnClickListener(v -> wv.login());
         B.setOnClickListener(v -> {
-            mainService.instaClient.act(InstaClient.GET_SAVED_POSTS);
+            mainService.instaClient.act_getSavedPosts();
         });
         C.setOnClickListener(v -> {
-            mainService.instaClient.act(InstaClient.RANDOM_WALLPAPER);
+            mainService.instaClient.act_setRandomWallpaper();
         });
         D.setOnClickListener(v -> {
-            mainService.instaClient.act(InstaClient.CONTINUE_LAST_SYNC);
+            mainService.instaClient.act_continueLastSync();
         });
         E.setOnClickListener(v -> {
             new RESTServer(mainService.instaClient).startListening();
         });
         F.setOnClickListener(v -> {
-            mainService.instaClient.act(InstaClient.TEST);
+            mainService.instaClient.act_test();
         });
     }
 
@@ -107,13 +107,7 @@ public class MainActivity extends AppCompatActivity {
 
     void onCreateTest() {
         try {
-//            String f = getExternalFilesDir(null).toString() + "/chinmayjain08/images/2751610900940158259_2751610900940158259.jpg";
-//            Log.d(TAG, f);
-//            CJImageUtil.removeWhiteBorder(BitmapFactory.decodeFile(f));
-//            new RESTServer(instaClient).startListening();
-            mainService.instaClient.act(InstaClient.TEST);
-
-
+            mainService.instaClient.act_test();
         } catch (Exception e) {
             Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
         }
