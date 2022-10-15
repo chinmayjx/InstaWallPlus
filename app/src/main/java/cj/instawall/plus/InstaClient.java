@@ -32,22 +32,45 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+class LIFOBlockingQueue extends LinkedBlockingDeque<Runnable> {
+    public static final String TAG = "CJ";
+
+    @Override
+    public boolean offer(Runnable runnable) {
+        try {
+            super.addFirst(runnable);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}
+
 
 public class InstaClient {
     public static final String TAG = "CJ";
     public static final String META = "meta";
     public static final String IMAGES = "images";
-    ExecutorService executor;
+    ThreadPoolExecutor executor;
+    ThreadPoolExecutor lifoExecutor;
     JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
@@ -119,7 +142,7 @@ public class InstaClient {
         }
     }
 
-    public static ArrayList<String> getLoggedInUsers(){
+    public static ArrayList<String> getLoggedInUsers() {
         try {
             ArrayList<String> arr = new ArrayList<>();
             JSONArray ja = authInfo.getJSONObject("user_data").names();
@@ -133,15 +156,15 @@ public class InstaClient {
         return new ArrayList<>();
     }
 
-    public static String getNextUser(){
+    public static String getNextUser() {
         ArrayList<String> users = getLoggedInUsers();
         for (int i = 0; i < users.size(); i++) {
-            if(users.get(i).equals(username)) return users.get((i+1)%users.size());
+            if (users.get(i).equals(username)) return users.get((i + 1) % users.size());
         }
         return null;
     }
 
-    public static void switchToUser(){
+    public static void switchToUser() {
 
     }
 
@@ -181,8 +204,16 @@ public class InstaClient {
         return null;
     }
 
+    private static InstaClient mainInstance = null;
 
-    public InstaClient(Context context) throws Exception {
+    public static InstaClient getInstance(Context context) throws Exception {
+        if (mainInstance == null) {
+            mainInstance = new InstaClient(context.getApplicationContext());
+        }
+        return mainInstance;
+    }
+
+    private InstaClient(Context context) throws Exception {
         authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
         if (!Files.exists(authInfoFile)) {
             try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
@@ -191,9 +222,10 @@ public class InstaClient {
             throw new Exception("no auth info file found, created one");
         }
         authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
-        Log.d(TAG, "authInfo: " + authInfo.toString(2));
+//        Log.d(TAG, "authInfo: " + authInfo.toString(2));
 
-        this.executor = Executors.newSingleThreadExecutor();
+        this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        this.lifoExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
         this.context = context;
         assetsDir = context.getExternalFilesDir(null).toString();
 
@@ -241,6 +273,16 @@ public class InstaClient {
             Log.e(TAG, "act_getRandomImage: " + Log.getStackTraceString(e));
         }
         return null;
+    }
+
+    public void act_getRandomImageAsync(Consumer<Path> callback) {
+        lifoExecutor.execute(() -> {
+            try {
+                callback.accept(getRandomImage());
+            } catch (Exception e) {
+                Log.e(TAG, "act_getRandomImageAsync: " + Log.getStackTraceString(e));
+            }
+        });
     }
 
     public void act_setWallpaper(Path path) {

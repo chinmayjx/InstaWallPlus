@@ -39,7 +39,7 @@ public class MainService extends Service {
 
     public void createInstaClient() {
         try {
-            instaClient = new InstaClient(this);
+            instaClient = InstaClient.getInstance(this);
             Log.d(TAG, "Updated InstaClient");
         } catch (Exception e) {
             Log.e(TAG, "MainService: Failed to get InstaClient " + Log.getStackTraceString(e));

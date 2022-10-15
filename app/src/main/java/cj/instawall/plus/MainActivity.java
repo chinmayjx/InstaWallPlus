@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
 
     FrameLayout wvHolder;
     InstaWebView wv;
-    Button A, B, C, D, E, F, G, H;
+    Button A, B, C, D, E, F, G, H, I;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
     String interceptor;
@@ -58,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
     MainService mainService;
 
     void initializeUI() {
-        getSupportActionBar().hide();
+        if(getSupportActionBar() != null) getSupportActionBar().hide();
         wvHolder = findViewById(R.id.webViewHolder);
         wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
         wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -70,7 +70,8 @@ public class MainActivity extends AppCompatActivity {
         F = findViewById(R.id.F);
         G = findViewById(R.id.G);
         H = findViewById(R.id.H);
-        Button[] btns = {A, B, C, D, E, F, G, H};
+        I = findViewById(R.id.I);
+        Button[] btns = {A, B, C, D, E, F, G, H, I};
         for (Button b : btns) {
             b.setTransformationMethod(null);
         }
@@ -118,6 +119,9 @@ public class MainActivity extends AppCompatActivity {
             CookieManager.getInstance().flush();
             wv.loadUrl("https://www.instagram.com");
         });
+        I.setOnClickListener(v -> {
+            startActivity(new Intent(this, ViewActivity.class));
+        });
     }
 
     void readScripts() {
@@ -132,7 +136,7 @@ public class MainActivity extends AppCompatActivity {
 
     void onCreateTest() {
         try {
-            mainService.instaClient.act_test();
+//            mainService.instaClient.act_test();
         } catch (Exception e) {
             Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
         }

@@ -20,7 +20,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="Insta.com"
+            android:text=".com"
             android:typeface="monospace" />
 
         <Button
@@ -30,7 +30,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="SavedPosts"
+            android:text="Sync"
             android:typeface="monospace" />
 
         <Button
@@ -40,7 +40,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="Random WallP"
+            android:text="Random W"
             android:typeface="monospace" />
     </LinearLayout>
 
@@ -55,7 +55,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="Continue Sync"
+            android:text="...Sync"
             android:typeface="monospace" />
 
         <Button
@@ -65,7 +65,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="Start REST"
+            android:text="REST"
             android:typeface="monospace" />
 
         <Button
@@ -75,7 +75,7 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="Test"
+            android:text="T"
             android:typeface="monospace" />
     </LinearLayout>
 
@@ -100,7 +100,17 @@
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:text="New Login"
+            android:text="Login"
+            android:typeface="monospace" />
+
+        <Button
+            android:id="@+id/I"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:text="Grid"
             android:typeface="monospace" />
     </LinearLayout>
 </LinearLayout>
