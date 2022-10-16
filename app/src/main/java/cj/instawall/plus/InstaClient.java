@@ -49,20 +49,7 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-class LIFOBlockingQueue extends LinkedBlockingDeque<Runnable> {
-    public static final String TAG = "CJ";
-
-    @Override
-    public boolean offer(Runnable runnable) {
-        try {
-            super.addFirst(runnable);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-}
+import cj.instawall.plus.LIFOBlockingQueue;
 
 
 public class InstaClient {
