@@ -473,32 +473,60 @@ public class InstaClient {
         }
     }
 
+    JSONObject getBestImage(JSONObject c) throws JSONException {
+        JSONObject bestImage = null;
+        JSONObject originalImage = null;
+        int originalWidth = c.optInt("original_width");
+        int originalHeight = c.optInt("original_height");
+        JSONArray imageVersions = c.getJSONObject("image_versions2").getJSONArray("candidates");
+        int mxa = 0;
+        for (int j = 0; j < imageVersions.length(); j++) {
+            JSONObject iv = imageVersions.getJSONObject(j);
+            int cw = iv.getInt("width");
+            int ch = iv.getInt("height");
+            int ca = cw * ch;
+            if (ca > mxa) {
+                bestImage = iv;
+                mxa = ca;
+            }
+            if(cw == originalWidth && ch == originalHeight){
+                originalImage = iv;
+            }
+        }
+        int bestWidth = bestImage.getInt("width");
+        int bestHeight = bestImage.getInt("height");
+        if (originalWidth != bestWidth || originalHeight != bestHeight) {
+            Log.d(TAG, "best image doesn't match original dimensions");
+            Log.d(TAG, "best: " + bestWidth + " x " + bestHeight);
+            Log.d(TAG, "original: " + originalWidth + " x " + originalHeight);
+            if(originalImage != null){
+                Log.d(TAG, "found and using original image");
+            }
+        }
+        return originalImage == null ? bestImage : originalImage;
+    }
+
     String saveImageFromObject(JSONObject c, String postID) throws JSONException, IOException {
         String imageID = c.getString("pk");
         String newFileName = postID + "_" + imageID + ".jpg";
-        String originalWidth = c.getString("original_width");
-        String originalHeight = c.getString("original_height");
-        JSONArray imageVersions = c.getJSONObject("image_versions2").getJSONArray("candidates");
-        for (int j = 0; j < imageVersions.length(); j++) {
-            JSONObject iv = imageVersions.getJSONObject(j);
-            if (iv.optString("width").equals(originalWidth) && iv.optString("height").equals(originalHeight)) {
-                Log.d(TAG, iv.getString("url"));
-                String oldFileName = filenameFromUrl(iv.getString("url"));
-                Log.d(TAG, oldFileName);
-                if (Files.exists(Paths.get(imagePath, oldFileName)) || Files.exists(Paths.get(imagePath, newFileName))) {
-                    if (Files.exists(Paths.get(imagePath, oldFileName))) {
-                        Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
-                        Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
-                    } else {
-                        Log.d(TAG, "File already exists, " + newFileName);
-                    }
-                    if (qualityCheck(Paths.get(imagePath, newFileName), iv)) break;
-                }
-                String url = iv.getString("url");
-                Log.d(TAG, "downloading image: " + url);
-                downloadFromURL(url, Paths.get(imagePath, newFileName));
+        JSONObject iv = getBestImage(c);
+
+        Log.d(TAG, iv.getString("url"));
+        String oldFileName = filenameFromUrl(iv.getString("url"));
+        Log.d(TAG, oldFileName);
+        if (Files.exists(Paths.get(imagePath, oldFileName)) || Files.exists(Paths.get(imagePath, newFileName))) {
+            if (Files.exists(Paths.get(imagePath, oldFileName))) {
+                Files.move(Paths.get(imagePath, oldFileName), Paths.get(imagePath, newFileName), StandardCopyOption.REPLACE_EXISTING);
+                Log.d(TAG, "File already exists, renamed " + oldFileName + " to " + newFileName);
+            } else {
+                Log.d(TAG, "File already exists, " + newFileName);
             }
+            if (qualityCheck(Paths.get(imagePath, newFileName), iv)) return newFileName;
         }
+        String url = iv.getString("url");
+        Log.d(TAG, "downloading image: " + url);
+        downloadFromURL(url, Paths.get(imagePath, newFileName));
+
         return newFileName;
     }
 

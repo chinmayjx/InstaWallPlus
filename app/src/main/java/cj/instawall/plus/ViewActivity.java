@@ -13,7 +13,10 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.ImageView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -22,14 +25,33 @@ import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
 public class ViewActivity extends AppCompatActivity {
+    public static final String TAG = "CJ";
     InstaClient instaClient;
+    RecyclerView rv;
+    Spinner gridFilter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_view);
         if(getSupportActionBar() != null) getSupportActionBar().hide();
-        RecyclerView rv = findViewById(R.id.recycler_grid);
+        rv = findViewById(R.id.recycler_grid);
+        gridFilter = findViewById(R.id.grid_filter);
+        ArrayAdapter adapter = new ArrayAdapter(this, android.R.layout.simple_spinner_item, new String[]{"abcd","abcd","abcd","abcd"});
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        gridFilter.setAdapter(adapter);
+        gridFilter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+                Log.d(TAG, "onItemSelected: " + i);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> adapterView) {
+                Log.d(TAG, "onNothingSelected: ");
+            }
+        });
+
         try {
             instaClient = InstaClient.getInstance(this);
         } catch (Exception e) {

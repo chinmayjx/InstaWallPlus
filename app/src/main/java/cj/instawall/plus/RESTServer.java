@@ -148,6 +148,10 @@ public class RESTServer {
                     instaClient.act_setWallpaper(instaClient.pathByFileName(pathTokens[1]));
                     sendString(client, "OK boss");
                     break;
+                case "wallpaper-by-code":
+                    instaClient.act_setWallpaperFromCode(pathTokens[1]);
+                    sendString(client, "OK boss");
+                    break;
                 default:
                     sendString(client, "404 NOT FOUND");
             }
