@@ -12,6 +12,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.snackbar.Snackbar;
+
 public class ViewActivity extends AppCompatActivity {
     public static final String TAG = "CJ";
     InstaClient instaClient;
@@ -34,9 +37,22 @@ public class ViewActivity extends AppCompatActivity {
 
         displayWidth = displayMetrics.widthPixels;
 
+        FloatingActionButton fab = findViewById(R.id.grid_fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Snackbar.make(view, "Here's a Snackbar", Snackbar.LENGTH_LONG)
+                        .setAction("Action", null).show();
+            }
+        });
+
+
         if (getSupportActionBar() != null) getSupportActionBar().hide();
         rv = findViewById(R.id.recycler_grid);
         rvAdapter = new RVAdapter(instaClient, rv);
+
+        rvAdapter.onEnterSelected = () -> fab.setVisibility(View.VISIBLE);
+        rvAdapter.onExitSelected = () -> fab.setVisibility(View.GONE);
 
         rv.setAdapter(rvAdapter);
         rv.setLayoutManager(new GridLayoutManager(this, displayWidth / 500));
@@ -70,5 +86,15 @@ public class ViewActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> adapterView) {
             }
         });
+
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (rvAdapter.selected.size() > 0) {
+            rvAdapter.clearSelection();
+        } else {
+            super.onBackPressed();
+        }
     }
 }

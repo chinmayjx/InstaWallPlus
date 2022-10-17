@@ -40,13 +40,19 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     List<Pair<Integer, Bitmap>> bitmaps;
     List<Path> paths;
     ClickAction currentClickAction = ClickAction.Set_wallpaper;
-    Consumer<Path> itemClickCallback = path -> {
+    Runnable onEnterSelected, onExitSelected;
+    Consumer<Integer> itemClickCallback = pos -> {
+        if (selected.size() > 0) {
+            toggleSelection(pos);
+            return;
+        }
+        if (paths.get(pos) == null) return;
         switch (currentClickAction) {
             case Set_wallpaper:
-                instaClient.act_setWallpaper(path);
+                instaClient.act_setWallpaper(paths.get(pos));
                 break;
             case Delete:
-                Log.d(TAG, "delete: " + path);
+                Log.d(TAG, "delete: " + paths.get(pos));
                 break;
         }
     };
@@ -110,6 +116,27 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         this.rv = rv;
     }
 
+    public void clearSelection() {
+        Integer[] tmp = new Integer[selected.size()];
+        selected.toArray(tmp);
+        selected.clear();
+        for (Integer i : tmp) {
+            notifyItemChanged(i);
+        }
+        if(onExitSelected != null) onExitSelected.run();
+    }
+
+    public void toggleSelection(int pos) {
+        if (selected.contains(pos)) {
+            selected.remove(pos);
+            if(selected.size() == 0 && onExitSelected != null) onExitSelected.run();
+        } else {
+            if(selected.size() == 0 && onEnterSelected != null) onEnterSelected.run();
+            selected.add(pos);
+        }
+        notifyItemChanged(pos);
+    }
+
     public static class RVHolder extends RecyclerView.ViewHolder {
         ImageView iv;
         View overlay;
@@ -120,22 +147,12 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             this.rvAdapter = rvAdapter;
             iv = itemView.findViewById(R.id.grid_iv);
             overlay = itemView.findViewById(R.id.grid_overlay);
+            Log.d(TAG, "RVHolder: " + rvAdapter.selected);
             iv.setOnClickListener(v -> {
-                int pos = getAdapterPosition();
-                Path p = rvAdapter.paths.get(pos);
-                if (p != null) {
-                    rvAdapter.itemClickCallback.accept(p);
-                }
+                rvAdapter.itemClickCallback.accept(getAdapterPosition());
             });
             iv.setOnLongClickListener(v -> {
-                int pos = getAdapterPosition();
-                if (rvAdapter.selected.contains(pos)) {
-                    rvAdapter.selected.add(pos);
-                    overlay.setVisibility(View.GONE);
-                } else {
-                    rvAdapter.selected.add(pos);
-                    overlay.setVisibility(View.VISIBLE);
-                }
+                rvAdapter.toggleSelection(getAdapterPosition());
                 return true;
             });
         }
@@ -180,6 +197,11 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     @Override
     public void onBindViewHolder(@NonNull RVHolder holder, int pos) {
         if (currentDataset == null) return;
+        if (selected.contains(pos)) {
+            holder.overlay.setVisibility(View.VISIBLE);
+        } else {
+            holder.overlay.setVisibility(View.GONE);
+        }
         switch (currentDataset) {
             case Random:
                 lazyLoadBitmap(holder, pos, () -> instaClient.act_getRandomImage());
