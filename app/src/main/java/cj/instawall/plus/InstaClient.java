@@ -201,6 +201,8 @@ public class InstaClient {
     }
 
     private InstaClient(Context context) throws Exception {
+        sharedPreferences = context.getSharedPreferences(MainActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
+        spEditor = sharedPreferences.edit();
         authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
         if (!Files.exists(authInfoFile)) {
             try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
@@ -446,9 +448,11 @@ public class InstaClient {
     }
 
     boolean qualityCheck(Path image, JSONObject imageInfo) throws JSONException {
-        Bitmap img = BitmapFactory.decodeFile(image.toString());
+        BitmapFactory.Options opt = new BitmapFactory.Options();
+        opt.inJustDecodeBounds = true;
+        Bitmap img = BitmapFactory.decodeFile(image.toString(), opt);
         String requiredDimensions = imageInfo.getString("width") + " x " + imageInfo.getString("height");
-        String actualDimensions = img.getWidth() + " x " + img.getHeight();
+        String actualDimensions = opt.outWidth + " x " + opt.outHeight;
         if (requiredDimensions.equals(actualDimensions)) {
             Log.d(TAG, "qualityCheck: pass");
             return true;

@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -104,10 +105,14 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 break;
             case Downloaded:
                 try {
-                    paths = Files.list(Paths.get(InstaClient.imagePath)).collect(Collectors.toList());
+                    File dir = new File(InstaClient.imagePath);
+                    File[] files = dir.listFiles();
+                    Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+                    paths = new ArrayList<Path>((int) dir.length());
+                    for(File f: files) paths.add(Paths.get(f.getAbsolutePath()));
+
                     requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
-                    Log.d(TAG, "n: " + paths.size());
-                } catch (IOException e) {
+                } catch (Exception e) {
                     Log.e(TAG, "setCurrentDataset: " + Log.getStackTraceString(e));
                 }
                 break;
@@ -118,8 +123,8 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     }
 
     enum Dataset {
-        Downloaded,
         Random,
+        Downloaded,
         Fails_quality_check
     }
 
@@ -167,17 +172,21 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             if (!requested.get(pos)) {
                 requested.set(pos, true);
                 executor.execute(() -> {
-                    Path p = getPath.get();
-                    paths.set(pos, p);
-                    Bitmap b = BitmapFactory.decodeFile(p.toString());
-                    if (b != null) {
-                        int sw = 800;
-                        int sh = (int) (sw * ((float) b.getHeight() / b.getWidth()));
-                        b = Bitmap.createScaledBitmap(b, sw, sh, false);
-                        int old = bitmaps.get(pos % MAX).first;
-                        if (old >= 0) requested.set(old, false);
-                        bitmaps.set(pos % MAX, new Pair<>(pos, b));
-                        handler.post(() -> notifyItemChanged(pos));
+                    try{
+                        Path p = getPath.get();
+                        paths.set(pos, p);
+                        Bitmap b = BitmapFactory.decodeFile(p.toString());
+                        if (b != null) {
+                            int sw = 800;
+                            int sh = (int) (sw * ((float) b.getHeight() / b.getWidth()));
+                            b = Bitmap.createScaledBitmap(b, sw, sh, false);
+                            int old = bitmaps.get(pos % MAX).first;
+                            if (old >= 0) requested.set(old, false);
+                            bitmaps.set(pos % MAX, new Pair<>(pos, b));
+                            handler.post(() -> notifyItemChanged(pos));
+                        }
+                    }catch (Exception e){
+                        Log.e(TAG, "lazyLoadBitmap: " + Log.getStackTraceString(e));
                     }
                 });
             }
