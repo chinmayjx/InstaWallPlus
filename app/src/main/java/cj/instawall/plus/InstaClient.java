@@ -823,6 +823,9 @@ public class InstaClient {
             //           Log.d(TAG, String.valueOf(sh));
             WallpaperManager manager = WallpaperManager.getInstance(context);
             manager.setBitmap(background);
+            FileOutputStream out = new FileOutputStream(Paths.get(filesDir, username, "recent_wallpapers.txt").toString(), true);
+            out.write((path + "\n").getBytes(StandardCharsets.UTF_8));
+            out.close();
             Log.d(TAG, "Wallpaper set successfully");
         } catch (Exception e) {
             Log.d(TAG, "Failed to set wallpaper " + Log.getStackTraceString(e));

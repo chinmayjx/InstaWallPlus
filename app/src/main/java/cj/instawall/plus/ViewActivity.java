@@ -1,5 +1,6 @@
 package cj.instawall.plus;
 
+import android.app.AlertDialog;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -51,7 +52,7 @@ public class ViewActivity extends AppCompatActivity {
 
         if (getSupportActionBar() != null) getSupportActionBar().hide();
         rv = findViewById(R.id.recycler_grid);
-        rvAdapter = new RVAdapter(instaClient, rv);
+        rvAdapter = new RVAdapter(instaClient, this);
 
         rvAdapter.onEnterSelected = () -> fab.setVisibility(View.VISIBLE);
         rvAdapter.onExitSelected = () -> fab.setVisibility(View.GONE);

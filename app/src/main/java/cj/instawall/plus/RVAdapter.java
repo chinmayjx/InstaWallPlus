@@ -1,5 +1,7 @@
 package cj.instawall.plus;
 
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
@@ -8,6 +10,7 @@ import android.util.Pair;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
@@ -16,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -46,6 +50,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     ClickAction currentClickAction;
     ArrayList<ClickAction> currentClickActions = new ArrayList<>();
     Runnable onEnterSelected, onExitSelected;
+    ViewActivity activity;
 
     void removeIndex(int pos) {
         requested.remove(pos);
@@ -65,29 +70,39 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             toggleSelection(pos);
             return;
         }
+        if (currentClickAction == null) return;
+        dispatchAction(currentClickAction, pos);
+
+    };
+
+    public void dispatchAction(ClickAction action, int pos) {
         Path p = paths.get(pos);
         if (p == null) return;
-        if (currentClickAction != null)
-            switch (currentClickAction) {
-                case Set_wallpaper:
-                    instaClient.act_setWallpaper(p);
-                    break;
-                case Delete:
-                    instaClient.deleteImage(p);
-                    removeIndex(pos);
-                    break;
-                case Restore:
-                    instaClient.restoreImage(p);
-                    removeIndex(pos);
-                    break;
-            }
-    };
+        switch (action) {
+            case Select:
+                toggleSelection(pos);
+                break;
+            case Set_wallpaper:
+                instaClient.act_setWallpaper(p);
+                break;
+            case Delete:
+                instaClient.deleteImage(p);
+                removeIndex(pos);
+                break;
+            case Restore:
+                instaClient.restoreImage(p);
+                removeIndex(pos);
+                break;
+        }
+    }
+
     Handler handler;
     private Dataset currentDataset = null;
     ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
 
 
     enum ClickAction {
+        Select,
         Set_wallpaper,
         Delete,
         Restore,
@@ -106,6 +121,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             switch (currentDataset) {
                 case Random:
                 case Downloaded:
+                case Recent_wallpapers:
                     currentClickActions.addAll(Arrays.asList(ClickAction.Set_wallpaper, ClickAction.Delete));
                     break;
                 case Trash:
@@ -139,6 +155,12 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
                     requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
                     break;
+                case Recent_wallpapers:
+                    paths = new ArrayList<>();
+                    Files.readAllLines(Paths.get(InstaClient.filesDir, InstaClient.username, "recent_wallpapers.txt")).forEach(l -> paths.add(Paths.get(l)));
+                    Collections.reverse(paths);
+                    requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
+                    break;
                 case Trash:
                     ArrayList<File> f1 = new ArrayList<>();
                     Iterator<String> it = InstaClient.getDeletedImages().keys();
@@ -168,6 +190,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     enum Dataset {
         Random,
         Downloaded,
+        Recent_wallpapers,
         Fails_quality_check,
         Trash;
 
@@ -178,10 +201,11 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
     }
 
-    public RVAdapter(InstaClient instaClient, RecyclerView rv) {
+    public RVAdapter(InstaClient instaClient, ViewActivity activity) {
         this.instaClient = instaClient;
         this.handler = new Handler();
-        this.rv = rv;
+        this.rv = activity.rv;
+        this.activity = activity;
     }
 
     public void clearSelection() {
@@ -205,6 +229,15 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         notifyItemChanged(pos);
     }
 
+    public void showActionDialog(int pos) {
+        ArrayList<ClickAction> tmp = new ArrayList<>(currentClickActions);
+        tmp.add(0, ClickAction.Select);
+        new AlertDialog.Builder(activity).setTitle(paths.get(pos).getFileName().toString())
+                .setAdapter(new ArrayAdapter<ClickAction>(rv.getContext(), android.R.layout.simple_list_item_1, tmp), (dialog, i) -> {
+                    dispatchAction(tmp.get(i), pos);
+                }).create().show();
+    }
+
     public static class RVHolder extends RecyclerView.ViewHolder {
         ImageView iv;
         View overlay;
@@ -219,7 +252,8 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 rvAdapter.itemClickCallback.accept(getAdapterPosition());
             });
             iv.setOnLongClickListener(v -> {
-                rvAdapter.toggleSelection(getAdapterPosition());
+//                rvAdapter.toggleSelection(getAdapterPosition());
+                rvAdapter.showActionDialog(getAdapterPosition());
                 return true;
             });
         }
@@ -275,6 +309,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 break;
             case Downloaded:
             case Trash:
+            case Recent_wallpapers:
                 lazyLoadBitmap(holder, pos, () -> paths.get(pos));
                 break;
 
