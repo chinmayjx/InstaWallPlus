@@ -13,13 +13,17 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -40,19 +44,21 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     List<Pair<Integer, Bitmap>> bitmaps;
     List<Path> paths;
     ClickAction currentClickAction = ClickAction.Set_wallpaper;
+    ArrayList<ClickAction> currentClickActions = new ArrayList<>();
     Runnable onEnterSelected, onExitSelected;
     Consumer<Integer> itemClickCallback = pos -> {
         if (selected.size() > 0) {
             toggleSelection(pos);
             return;
         }
-        if (paths.get(pos) == null) return;
+        Path p = paths.get(pos);
+        if (p == null) return;
         switch (currentClickAction) {
             case Set_wallpaper:
-                instaClient.act_setWallpaper(paths.get(pos));
+                instaClient.act_setWallpaper(p);
                 break;
             case Delete:
-                Log.d(TAG, "delete: " + paths.get(pos));
+                instaClient.deleteImage(p);
                 break;
         }
     };
@@ -63,24 +69,39 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
     enum ClickAction {
         Set_wallpaper,
-        Delete
+        Delete,
+        Restore,
+        Permanently_delete;
+
+        @NonNull
+        @Override
+        public String toString(){
+            return this.name().replace('_', ' ');
+        }
     }
 
-    public ArrayList<String> getClickActions() {
-        ArrayList<String> r = new ArrayList<>();
-        Arrays.stream(ClickAction.values()).forEach(x -> r.add(x.name().replace('_', ' ')));
-        return r;
+    public void updateCurrentClickActions() {
+        currentClickActions.clear();
+        if (currentDataset != null)
+            switch (currentDataset) {
+                case Random:
+                case Downloaded:
+                    currentClickActions.addAll(Arrays.asList(ClickAction.Set_wallpaper, ClickAction.Delete));
+                case Trash:
+                    currentClickActions.addAll(Arrays.asList(ClickAction.Restore, ClickAction.Permanently_delete));
+            }
+        currentClickActions.add(ClickAction.Set_wallpaper);
     }
 
     void setCurrentDataset(int pos) {
-        currentDataset = Dataset.values()[pos];
-        switch (currentDataset) {
-            case Random:
-                requested = Stream.generate(() -> false).limit(DEFAULT_RANDOM).collect(Collectors.toList());
-                paths = Arrays.asList(new Path[DEFAULT_RANDOM]);
-                break;
-            case Downloaded:
-                try {
+        try {
+            currentDataset = Dataset.values()[pos];
+            switch (currentDataset) {
+                case Random:
+                    requested = Stream.generate(() -> false).limit(DEFAULT_RANDOM).collect(Collectors.toList());
+                    paths = Arrays.asList(new Path[DEFAULT_RANDOM]);
+                    break;
+                case Downloaded:
                     File dir = new File(InstaClient.imagePath);
                     File[] files = dir.listFiles();
                     Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
@@ -88,26 +109,43 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     for (File f : files) paths.add(Paths.get(f.getAbsolutePath()));
 
                     requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
-                } catch (Exception e) {
-                    Log.e(TAG, "setCurrentDataset: " + Log.getStackTraceString(e));
-                }
-                break;
+                    break;
+                case Trash:
+                    ArrayList<File> f1 = new ArrayList<>();
+                    Iterator<String> it = InstaClient.getDeletedImages().keys();
+                    while (it.hasNext()) {
+                        JSONObject jo = InstaClient.getDeletedImages().getJSONObject(it.next());
+                        File tmp = new File(InstaClient.pathByFileName(jo.getString("fileName")).toString());
+                        tmp.setLastModified(jo.getLong("ts"));
+                        f1.add(tmp);
+                    }
+                    f1.sort(Comparator.comparingLong(File::lastModified).reversed());
+                    paths = new ArrayList<Path>((int) f1.size());
+                    for (File f : f1) paths.add(Paths.get(f.getAbsolutePath()));
+                    requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
+                    break;
+
+            }
+            updateCurrentClickActions();
+            bitmaps = Stream.generate(() -> new Pair<Integer, Bitmap>(-1, null)).limit(MAX).collect(Collectors.toList());
+            rv.scrollToPosition(0);
+            notifyDataSetChanged();
+        } catch (Exception e) {
+            Log.e(TAG, "setCurrentDataset: " + Log.getStackTraceString(e));
         }
-        bitmaps = Stream.generate(() -> new Pair<Integer, Bitmap>(-1, null)).limit(MAX).collect(Collectors.toList());
-        rv.scrollToPosition(0);
-        notifyDataSetChanged();
     }
 
     enum Dataset {
         Random,
         Downloaded,
-        Fails_quality_check
-    }
+        Fails_quality_check,
+        Trash;
 
-    public ArrayList<String> getAllDatasets() {
-        ArrayList<String> r = new ArrayList<>();
-        Arrays.stream(Dataset.values()).forEach(x -> r.add(x.name().replace('_', ' ')));
-        return r;
+        @NonNull
+        @Override
+        public String toString(){
+            return this.name().replace('_', ' ');
+        }
     }
 
     public RVAdapter(InstaClient instaClient, RecyclerView rv) {
@@ -123,15 +161,15 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         for (Integer i : tmp) {
             notifyItemChanged(i);
         }
-        if(onExitSelected != null) onExitSelected.run();
+        if (onExitSelected != null) onExitSelected.run();
     }
 
     public void toggleSelection(int pos) {
         if (selected.contains(pos)) {
             selected.remove(pos);
-            if(selected.size() == 0 && onExitSelected != null) onExitSelected.run();
+            if (selected.size() == 0 && onExitSelected != null) onExitSelected.run();
         } else {
-            if(selected.size() == 0 && onEnterSelected != null) onEnterSelected.run();
+            if (selected.size() == 0 && onEnterSelected != null) onEnterSelected.run();
             selected.add(pos);
         }
         notifyItemChanged(pos);
@@ -147,7 +185,6 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             this.rvAdapter = rvAdapter;
             iv = itemView.findViewById(R.id.grid_iv);
             overlay = itemView.findViewById(R.id.grid_overlay);
-            Log.d(TAG, "RVHolder: " + rvAdapter.selected);
             iv.setOnClickListener(v -> {
                 rvAdapter.itemClickCallback.accept(getAdapterPosition());
             });
@@ -207,6 +244,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 lazyLoadBitmap(holder, pos, () -> instaClient.act_getRandomImage());
                 break;
             case Downloaded:
+            case Trash:
                 lazyLoadBitmap(holder, pos, () -> paths.get(pos));
                 break;
 

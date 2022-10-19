@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
+import java.util.ArrayList;
+
 public class ViewActivity extends AppCompatActivity {
     public static final String TAG = "CJ";
     InstaClient instaClient;
@@ -59,13 +61,20 @@ public class ViewActivity extends AppCompatActivity {
 
         gridDataset = findViewById(R.id.grid_dataset);
         gridAction = findViewById(R.id.grid_action);
-        ArrayAdapter<String> datasetAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, rvAdapter.getAllDatasets());
+        ArrayAdapter<RVAdapter.Dataset> datasetAdapter = new ArrayAdapter<RVAdapter.Dataset>(this, android.R.layout.simple_spinner_item, RVAdapter.Dataset.values());
         datasetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         gridDataset.setAdapter(datasetAdapter);
+
+        ArrayAdapter<RVAdapter.ClickAction> actionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, rvAdapter.currentClickActions);
+        actionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        gridAction.setAdapter(actionAdapter);
+
+
         gridDataset.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
                 rvAdapter.setCurrentDataset(i);
+                actionAdapter.notifyDataSetChanged();
             }
 
             @Override
@@ -73,13 +82,10 @@ public class ViewActivity extends AppCompatActivity {
             }
         });
 
-        ArrayAdapter<String> actionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, rvAdapter.getClickActions());
-        actionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        gridAction.setAdapter(actionAdapter);
         gridAction.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                rvAdapter.currentClickAction = RVAdapter.ClickAction.values()[i];
+
             }
 
             @Override
