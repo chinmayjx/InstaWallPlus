@@ -46,6 +46,20 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     ClickAction currentClickAction;
     ArrayList<ClickAction> currentClickActions = new ArrayList<>();
     Runnable onEnterSelected, onExitSelected;
+
+    void removeIndex(int pos) {
+        requested.remove(pos);
+        paths.remove(pos);
+        notifyItemRemoved(pos);
+        int i = pos + 1;
+        while (bitmaps.get(i % MAX).first - pos == 1) {
+            bitmaps.set(pos % MAX, new Pair<>(bitmaps.get(i % MAX).first - 1, bitmaps.get(i % MAX).second));
+            pos = i;
+            i = pos + 1;
+        }
+        bitmaps.set(pos % MAX, new Pair<>(-1, null));
+    }
+
     Consumer<Integer> itemClickCallback = pos -> {
         if (selected.size() > 0) {
             toggleSelection(pos);
@@ -60,6 +74,11 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     break;
                 case Delete:
                     instaClient.deleteImage(p);
+                    removeIndex(pos);
+                    break;
+                case Restore:
+                    instaClient.restoreImage(p);
+                    removeIndex(pos);
                     break;
             }
     };
@@ -109,7 +128,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
             switch (currentDataset) {
                 case Random:
                     requested = Stream.generate(() -> false).limit(DEFAULT_RANDOM).collect(Collectors.toList());
-                    paths = Arrays.asList(new Path[DEFAULT_RANDOM]);
+                    paths = new ArrayList<>(Arrays.asList(new Path[DEFAULT_RANDOM]));
                     break;
                 case Downloaded:
                     File dir = new File(InstaClient.imagePath);
@@ -126,7 +145,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     while (it.hasNext()) {
                         JSONObject jo = InstaClient.getDeletedImages().getJSONObject(it.next());
                         File tmp = new File(Paths.get(InstaClient.deletedImagePath, jo.getString("fileName")).toString());
-                        if(!tmp.exists()) continue;
+                        if (!tmp.exists()) continue;
                         tmp.setLastModified(jo.getLong("ts"));
                         f1.add(tmp);
                     }

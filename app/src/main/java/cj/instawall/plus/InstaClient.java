@@ -417,6 +417,11 @@ public class InstaClient {
     }
 
     // modify app data ------------------------------------------
+
+    public void saveDeletedImages() throws JSONException, IOException {
+        Files.copy(new ByteArrayInputStream(deletedImages.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(filesDir, username, "deleted_images.json"), StandardCopyOption.REPLACE_EXISTING);
+    }
+
     public void deleteImage(Path p) {
         if (p == null) return;
         try {
@@ -434,11 +439,29 @@ public class InstaClient {
 
             Files.move(p, Paths.get(deletedImagePath, fileName), StandardCopyOption.REPLACE_EXISTING);
 
-            Files.copy(new ByteArrayInputStream(deletedImages.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(filesDir, username, "deleted_images.json"), StandardCopyOption.REPLACE_EXISTING);
-            Log.d(TAG, "deleteImage: " + getDeletedImages().toString());
+            saveDeletedImages();
         } catch (Exception e) {
             Log.e(TAG, "deleteImage: " + Log.getStackTraceString(e));
         }
+    }
+
+    public void restoreImage(Path p){
+        if (p == null) return;
+        try {
+            String[] tk = p.toString().split("/");
+            String fileName = tk[tk.length - 1];
+            tk = fileName.split("\\.")[0].split("_");
+            String imageID = tk[1];
+
+            getDeletedImages().remove(imageID);
+
+            Files.move(p, Paths.get(imagePath, fileName), StandardCopyOption.REPLACE_EXISTING);
+
+            saveDeletedImages();
+        } catch (Exception e) {
+            Log.e(TAG, "restoreImage: " + Log.getStackTraceString(e));
+        }
+
     }
 
     // ----------------------------------------------------------
