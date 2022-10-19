@@ -75,6 +75,8 @@ public class ViewActivity extends AppCompatActivity {
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
                 rvAdapter.setCurrentDataset(i);
                 actionAdapter.notifyDataSetChanged();
+                gridAction.setSelection(0);
+                rvAdapter.setCurrentClickAction(0);
             }
 
             @Override
@@ -85,7 +87,7 @@ public class ViewActivity extends AppCompatActivity {
         gridAction.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-
+                rvAdapter.setCurrentClickAction(adapterView.getSelectedItemPosition());
             }
 
             @Override

@@ -102,14 +102,12 @@ public class MainActivity extends AppCompatActivity {
             CookieManager.getInstance().removeAllCookies(null);
             String user = InstaClient.getNextUser();
             String cookie = InstaClient.getUserProperty(user, "cookie");
-            Log.d(TAG, "cookie set: " + cookie);
+//            Log.d(TAG, "cookie set: " + cookie);
             InstaWebView.setCookie("https://www.instagram.com", cookie);
             InstaWebView.setCookie("https://i.instagram.com", cookie);
 //            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
 
-            InstaClient.setCurrentUser(user);
-            InstaClient.commitAuthFile();
-            InstaClient.initializeVariables();
+            InstaClient.switchToUser(user);
 
             G.setText(user);
 

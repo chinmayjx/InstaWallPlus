@@ -43,7 +43,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     Set<Integer> selected = new HashSet<>();
     List<Pair<Integer, Bitmap>> bitmaps;
     List<Path> paths;
-    ClickAction currentClickAction = ClickAction.Set_wallpaper;
+    ClickAction currentClickAction;
     ArrayList<ClickAction> currentClickActions = new ArrayList<>();
     Runnable onEnterSelected, onExitSelected;
     Consumer<Integer> itemClickCallback = pos -> {
@@ -53,14 +53,15 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
         Path p = paths.get(pos);
         if (p == null) return;
-        switch (currentClickAction) {
-            case Set_wallpaper:
-                instaClient.act_setWallpaper(p);
-                break;
-            case Delete:
-                instaClient.deleteImage(p);
-                break;
-        }
+        if (currentClickAction != null)
+            switch (currentClickAction) {
+                case Set_wallpaper:
+                    instaClient.act_setWallpaper(p);
+                    break;
+                case Delete:
+                    instaClient.deleteImage(p);
+                    break;
+            }
     };
     Handler handler;
     private Dataset currentDataset = null;
@@ -75,7 +76,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
         @NonNull
         @Override
-        public String toString(){
+        public String toString() {
             return this.name().replace('_', ' ');
         }
     }
@@ -87,13 +88,22 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 case Random:
                 case Downloaded:
                     currentClickActions.addAll(Arrays.asList(ClickAction.Set_wallpaper, ClickAction.Delete));
+                    break;
                 case Trash:
                     currentClickActions.addAll(Arrays.asList(ClickAction.Restore, ClickAction.Permanently_delete));
+                    break;
+                default:
+                    currentClickActions.add(ClickAction.Set_wallpaper);
             }
-        currentClickActions.add(ClickAction.Set_wallpaper);
+    }
+
+    void setCurrentClickAction(int pos) {
+        if (pos < 0) return;
+        currentClickAction = currentClickActions.get(pos);
     }
 
     void setCurrentDataset(int pos) {
+        if (pos < 0) return;
         try {
             currentDataset = Dataset.values()[pos];
             switch (currentDataset) {
@@ -115,7 +125,8 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     Iterator<String> it = InstaClient.getDeletedImages().keys();
                     while (it.hasNext()) {
                         JSONObject jo = InstaClient.getDeletedImages().getJSONObject(it.next());
-                        File tmp = new File(InstaClient.pathByFileName(jo.getString("fileName")).toString());
+                        File tmp = new File(Paths.get(InstaClient.deletedImagePath, jo.getString("fileName")).toString());
+                        if(!tmp.exists()) continue;
                         tmp.setLastModified(jo.getLong("ts"));
                         f1.add(tmp);
                     }
@@ -143,7 +154,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
         @NonNull
         @Override
-        public String toString(){
+        public String toString() {
             return this.name().replace('_', ' ');
         }
     }
@@ -217,7 +228,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                         if (b != null) {
                             int sw = 800;
                             int sh = (int) (sw * ((float) b.getHeight() / b.getWidth()));
-                            b = Bitmap.createScaledBitmap(b, sw, sh, false);
+                            b = CJImageUtil.removeWhiteBorder(Bitmap.createScaledBitmap(b, sw, sh, false));
                             int old = bitmaps.get(pos % MAX).first;
                             if (old >= 0) requested.set(old, false);
                             bitmaps.set(pos % MAX, new Pair<>(pos, b));

@@ -18,6 +18,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,6 +51,7 @@ public class InstaClient {
     public static final String TAG = "CJ";
     public static final String META = "meta";
     public static final String IMAGES = "images";
+    public static final String DELETED = ".deleted_images";
     ThreadPoolExecutor executor;
     ThreadPoolExecutor lifoExecutor;
     JSONObject postCodeToID;
@@ -62,7 +64,7 @@ public class InstaClient {
     static JSONObject authInfo;
     static Path authInfoFile;
 
-    static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir;
+    static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir, deletedImagePath;
 
     // utilities to access JSON ---------------------
     static class PostInfo {
@@ -77,18 +79,26 @@ public class InstaClient {
         public static String postID(JSONObject postInfo) throws JSONException {
             return postInfo.getJSONArray("items").getJSONObject(0).getString("pk");
         }
+
+        public static String postCode(JSONObject postInfo) throws JSONException {
+            return postInfo.getJSONArray("items").getJSONObject(0).getString("code");
+        }
     }
 
     static class SavedItem {
         public static String postID(JSONObject savedItem) throws JSONException {
             return savedItem.getJSONObject("node").getString("id");
         }
+
+        public static String postCode(JSONObject savedItem) throws JSONException {
+            return savedItem.getJSONObject("node").getString("shortcode");
+        }
     }
 
-    // ----------------------------------------------
     // auth utils -----------------------------------
     public static void initializeVariables() {
         try {
+            deletedImages = null;
             savedPostsJSON = null;
             username = authInfo.getString("current_user");
             appID = authInfo.getString("app_id");
@@ -101,9 +111,11 @@ public class InstaClient {
 
             Files.createDirectories(Paths.get(filesDir, username, IMAGES));
             Files.createDirectories(Paths.get(filesDir, username, META));
+            Files.createDirectories(Paths.get(filesDir, username, DELETED));
 
             metaPath = Paths.get(filesDir, username, META).toString();
             imagePath = Paths.get(filesDir, username, IMAGES).toString();
+            deletedImagePath = Paths.get(filesDir, username, DELETED).toString();
 
         } catch (Exception e) {
             Log.e(TAG, "initializeVariables: " + Log.getStackTraceString(e));
@@ -125,6 +137,12 @@ public class InstaClient {
         } catch (JSONException e) {
             Log.e(TAG, "setCurrentUser: " + Log.getStackTraceString(e));
         }
+    }
+
+    public static void switchToUser(String user) {
+        InstaClient.setCurrentUser(user);
+        InstaClient.commitAuthFile();
+        InstaClient.initializeVariables();
     }
 
     public static ArrayList<String> getLoggedInUsers() {
@@ -287,10 +305,6 @@ public class InstaClient {
     }
 
     // utils to access app data ---------------------------------
-    JSONObject getRandomSavedItem() throws JSONException {
-        JSONArray savedPosts = getSavedPostsJSON();
-        return savedPosts.getJSONObject((int) (Math.random() * savedPosts.length()));
-    }
 
     Bitmap bitmapByFileName(String name) {
         return BitmapFactory.decodeFile(Paths.get(imagePath, name).toString());
@@ -350,13 +364,64 @@ public class InstaClient {
         return originalImage == null ? bestImage : originalImage;
     }
 
-    // ----------------------------------------------------------
-    // modify app data
+    // return random imageID from postInfo
+    String getImageAtIndexInPost(JSONObject postInfo, int index) throws JSONException {
+        try {
+            JSONArray carouselMedia = PostInfo.carouselMedia(postInfo);
+            if (index == -1) index = (int) (Math.random() * carouselMedia.length());
+            return carouselMedia.getJSONObject(index).getString("pk");
+        } catch (JSONException e) {
+            if (index == -1) index = 0;
+            return PostInfo.noCarouselImage(postInfo).getString("pk");
+        }
+    }
+
+    int numberOfImagesInPost(JSONObject postInfo) {
+        try {
+            return PostInfo.carouselMedia(postInfo).length();
+        } catch (JSONException e) {
+            return 1;
+        }
+    }
+
+    private Path getRandomImage() throws Exception {
+        JSONArray savedPosts = getSavedPostsJSON();
+        int savedItemIndex = (int) (Math.random() * savedPosts.length());
+        int startIndex = savedItemIndex;
+        while (true) {
+            JSONObject savedItem = savedPosts.getJSONObject(savedItemIndex);
+            String postID = SavedItem.postID(savedItem);
+            JSONObject randomPostInfo = null;
+            try {
+                randomPostInfo = getPostInfo(postID);
+            } catch (FileNotFoundException e) {
+                Log.e(TAG, "can't get post info for " + postID + ", check " + "https://www.instagram.com/p/" + SavedItem.postCode(savedItem));
+            }
+            int nInPost = numberOfImagesInPost(randomPostInfo);
+            int imageIndex = (int) (Math.random() * nInPost);
+            int startingImageIndex = imageIndex;
+            while (true) {
+                String imageID = getImageAtIndexInPost(randomPostInfo, imageIndex);
+                if (!getDeletedImages().has(imageID))
+                    return Paths.get(imagePath, getImageInPost(randomPostInfo, imageID));
+                imageIndex = (imageIndex + 1) % nInPost;
+                if(imageIndex == startingImageIndex) {
+                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
+                    if (savedItemIndex == startIndex) {
+                        throw new Exception("No undeleted saved posts found");
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // modify app data ------------------------------------------
     public void deleteImage(Path p) {
         if (p == null) return;
         try {
             String[] tk = p.toString().split("/");
-            String fileName = tk[tk.length -1];
+            String fileName = tk[tk.length - 1];
             tk = fileName.split("\\.")[0].split("_");
             String postID = tk[0];
             String imageID = tk[1];
@@ -366,30 +431,16 @@ public class InstaClient {
             j.put("fileName", fileName);
             j.put("ts", System.currentTimeMillis());
             getDeletedImages().put(imageID, j);
-            commit();
+
+            Files.move(p, Paths.get(deletedImagePath, fileName), StandardCopyOption.REPLACE_EXISTING);
+
+            Files.copy(new ByteArrayInputStream(deletedImages.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(filesDir, username, "deleted_images.json"), StandardCopyOption.REPLACE_EXISTING);
             Log.d(TAG, "deleteImage: " + getDeletedImages().toString());
         } catch (Exception e) {
             Log.e(TAG, "deleteImage: " + Log.getStackTraceString(e));
         }
     }
-    // ----------------------------------------------------------
 
-
-    // return random postID from postInfo
-    String getRandomImageInPost(JSONObject postInfo) throws JSONException {
-        try {
-            JSONArray carouselMedia = PostInfo.carouselMedia(postInfo);
-            return carouselMedia.getJSONObject((int) (Math.random() * carouselMedia.length())).getString("pk");
-        } catch (JSONException e) {
-            return PostInfo.noCarouselImage(postInfo).getString("pk");
-        }
-    }
-
-    private Path getRandomImage() throws JSONException, IOException {
-        JSONObject randomPost = getPostInfo(SavedItem.postID(getRandomSavedItem()));
-        String randomImage = getRandomImageInPost(randomPost);
-        return Paths.get(imagePath, getImageInPost(randomPost, randomImage));
-    }
     // ----------------------------------------------------------
 
     private void setRandomWallpaper() {
@@ -403,7 +454,7 @@ public class InstaClient {
     private void setWallpaperFromCode(String code) throws JSONException, IOException {
         String postID = getPostCodeToID(code);
         JSONObject postInfo = getPostInfo(postID);
-        setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getRandomImageInPost(postInfo))));
+        setWallpaper(Paths.get(imagePath, getImageInPost(postInfo, getImageAtIndexInPost(postInfo, -1))));
     }
 
     // sync unimportant variables with cache files --------------
@@ -423,14 +474,11 @@ public class InstaClient {
         try {
             if (postCodeToID != null)
                 Files.copy(new ByteArrayInputStream(postCodeToID.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(filesDir, "post_code_to_id.json"), StandardCopyOption.REPLACE_EXISTING);
-            if (deletedImages != null)
-                Files.copy(new ByteArrayInputStream(deletedImages.toString(2).getBytes(StandardCharsets.UTF_8)), Paths.get(filesDir, username, "deleted_images.json"), StandardCopyOption.REPLACE_EXISTING);
         } catch (Exception e) {
             Log.e(TAG, "saveFiles: " + Log.getStackTraceString(e));
         }
     }
 
-    // -----------------------------------------------------------
     // read objects from saved files -----------------------------
     private JSONObject getPostCodeToIDJSON() throws JSONException {
         if (postCodeToID != null) return postCodeToID;
@@ -485,31 +533,42 @@ public class InstaClient {
         return deletedImages;
     }
 
-    // -----------------------------------------------------------
     // get data from instagram -----------------------------------
-    JSONObject getPostInfo(String postId) {
+    JSONObject getPostInfo(String postId) throws IOException, JSONException {
+        if (Files.exists(Paths.get(metaPath, postId + ".json"))) {
+            Log.d(TAG, "found " + postId + " info locally");
+            return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
+        }
+        Log.d(TAG, "fetching " + postId + " from IG");
+        HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
+        JSONObject res = getJSONResponse(con);
+        Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"));
+        return res;
+    }
+
+    String getImageInPost(JSONObject postInfo, String imageId, int retryCount) throws IOException, JSONException {
+        String postID = PostInfo.postID(postInfo);
         try {
-            if (Files.exists(Paths.get(metaPath, postId + ".json"))) {
-                Log.d(TAG, "found " + postId + " info locally");
-                return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
+            try {
+                return getImageInCarousel(postInfo, imageId);
+            } catch (JSONException e) {
+                return saveImageFromObject(PostInfo.noCarouselImage(postInfo), postID);
             }
-            Log.d(TAG, "fetching " + postId + " from IG");
-            HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
-            JSONObject res = getJSONResponse(con);
-            Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"));
-            return res;
-        } catch (Exception e) {
-            Log.e(TAG, "downloadPostInfo: " + Log.getStackTraceString(e));
+        } catch (FileNotFoundException e) {
+            Log.d(TAG, "getImageInPost: " + "url expired, refreshing post info and retrying...");
+            Files.deleteIfExists(Paths.get(metaPath, postID + ".json"));
+            try {
+                if (retryCount < 1)
+                    return getImageInPost(getPostInfo(postID), imageId, retryCount + 1);
+            } catch (FileNotFoundException f) {
+                Log.d(TAG, "can't refresh post info, post probably deleted: https://www.instagram.com/p/" + PostInfo.postCode(postInfo));
+            }
         }
         return null;
     }
 
     String getImageInPost(JSONObject postInfo, String imageId) throws IOException, JSONException {
-        try {
-            return getImageInCarousel(postInfo, imageId);
-        } catch (JSONException e) {
-            return saveImageFromObject(PostInfo.noCarouselImage(postInfo), PostInfo.postID(postInfo));
-        }
+        return getImageInPost(postInfo, imageId, 0);
     }
 
     String getImageInCarousel(JSONObject postInfo, String imageId) throws JSONException, IOException {
@@ -666,7 +725,6 @@ public class InstaClient {
         return null;
     }
 
-    // -----------------------------------------------------------
     // http util -------------------------------------------------
     private HttpURLConnection getConnection(String urlString) throws IOException {
         URL url = new URL(urlString);
@@ -699,7 +757,6 @@ public class InstaClient {
         con.getInputStream().close();
     }
 
-    // ------------------------------------------------------------
     // miscellaneous utils -----------------------------------------
     static String getSessionID(String cookie) {
         Matcher m = Pattern.compile("sessionid=(\\d*)").matcher(cookie);
