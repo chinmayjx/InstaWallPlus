@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -405,7 +406,7 @@ public class InstaClient {
                 if (!getDeletedImages().has(imageID))
                     return Paths.get(imagePath, getImageInPost(randomPostInfo, imageID));
                 imageIndex = (imageIndex + 1) % nInPost;
-                if(imageIndex == startingImageIndex) {
+                if (imageIndex == startingImageIndex) {
                     savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
                     if (savedItemIndex == startIndex) {
                         throw new Exception("No undeleted saved posts found");
@@ -445,7 +446,7 @@ public class InstaClient {
         }
     }
 
-    public void restoreImage(Path p){
+    public void restoreImage(Path p) {
         if (p == null) return;
         try {
             String[] tk = p.toString().split("/");
