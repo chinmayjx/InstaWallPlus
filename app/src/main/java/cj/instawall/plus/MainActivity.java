@@ -134,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
 
     void onCreateTest() {
         try {
-//            mainService.instaClient.act_test();
+            mainService.instaClient.act_test();
         } catch (Exception e) {
             Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
         }

@@ -299,7 +299,8 @@ public class InstaClient {
 
     private void test() {
         try {
-
+//            Log.d(TAG, "test: me");
+//            getPostCodeToID("ClwQXg9I4IA");
         } catch (Exception e) {
             Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
         }
@@ -726,7 +727,7 @@ public class InstaClient {
                 Log.d(TAG, "found postID for code locally, " + code + " : " + getPostCodeToIDJSON().getString(code));
                 return getPostCodeToIDJSON().getString(code);
             }
-            Log.d(TAG, "get post id from code");
+            Log.d(TAG, "get post id from code:" + code);
             HttpURLConnection con = getConnection("https://www.instagram.com/p/" + code);
             String res = getStringResponse(con);
             Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\"[^>]*media\\?id=(\\d+)").matcher(res);
