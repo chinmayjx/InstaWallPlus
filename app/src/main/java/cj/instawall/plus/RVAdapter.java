@@ -79,6 +79,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         Path p = paths.get(pos);
         if (p == null) return;
         switch (action) {
+            case View:
+                activity.showImageViewer();
+                activity.imageViewer.loadBitmap(BitmapFactory.decodeFile(p.toString()));
+                break;
             case Select:
                 toggleSelection(pos);
                 break;
@@ -102,6 +106,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
 
     enum ClickAction {
+        View,
         Select,
         Set_wallpaper,
         Delete,
@@ -122,7 +127,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 case Random:
                 case Downloaded:
                 case Recent_wallpapers:
-                    currentClickActions.addAll(Arrays.asList(ClickAction.Set_wallpaper, ClickAction.Delete));
+                    currentClickActions.addAll(Arrays.asList(ClickAction.View, ClickAction.Set_wallpaper, ClickAction.Delete));
                     break;
                 case Trash:
                     currentClickActions.addAll(Arrays.asList(ClickAction.Restore, ClickAction.Permanently_delete));

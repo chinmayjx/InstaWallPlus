@@ -24,6 +24,7 @@ public class ViewActivity extends AppCompatActivity {
     RecyclerView rv;
     Spinner gridDataset, gridAction;
     RVAdapter rvAdapter;
+    ImageViewer imageViewer;
     int displayWidth;
 
     @Override
@@ -39,7 +40,7 @@ public class ViewActivity extends AppCompatActivity {
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
 
         displayWidth = displayMetrics.widthPixels;
-
+        imageViewer = findViewById(R.id.imgViewer);
         FloatingActionButton fab = findViewById(R.id.grid_fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -98,11 +99,19 @@ public class ViewActivity extends AppCompatActivity {
 
     }
 
+    public void showImageViewer(){
+        imageViewer.setVisibility(View.VISIBLE);
+    }
+
     @Override
     public void onBackPressed() {
         if (rvAdapter.selected.size() > 0) {
             rvAdapter.clearSelection();
-        } else {
+        }
+        else if(imageViewer.getVisibility() == View.VISIBLE){
+            imageViewer.setVisibility(View.INVISIBLE);
+        }
+        else {
             super.onBackPressed();
         }
     }
