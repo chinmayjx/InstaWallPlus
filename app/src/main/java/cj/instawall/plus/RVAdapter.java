@@ -130,10 +130,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     currentClickActions.addAll(Arrays.asList(ClickAction.View, ClickAction.Set_wallpaper, ClickAction.Delete));
                     break;
                 case Trash:
-                    currentClickActions.addAll(Arrays.asList(ClickAction.Restore, ClickAction.Permanently_delete));
+                    currentClickActions.addAll(Arrays.asList(ClickAction.View, ClickAction.Restore, ClickAction.Permanently_delete));
                     break;
                 default:
-                    currentClickActions.add(ClickAction.Set_wallpaper);
+                    currentClickActions.addAll(Arrays.asList(ClickAction.View, ClickAction.Set_wallpaper));
             }
     }
 

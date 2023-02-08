@@ -11,8 +11,13 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.hardware.biometrics.BiometricManager;
+import android.hardware.biometrics.BiometricPrompt;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,6 +44,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Scanner;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -54,6 +60,8 @@ public class MainActivity extends AppCompatActivity {
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
     String interceptor;
+    Handler handler;
+    BiometricAuth biometricAuth;
 
     MainService mainService;
 
@@ -93,24 +101,12 @@ public class MainActivity extends AppCompatActivity {
         });
         F.setOnClickListener(v -> {
 //            mainService.instaClient.act_test();
-            InstaClient.setCurrentUser("chinmayjain08");
-            InstaClient.commitAuthFile();
-            InstaClient.initializeVariables();
+//            InstaClient.setCurrentUser("chinmayjain08");
+//            InstaClient.commitAuthFile();
+//            InstaClient.initializeVariables();
         });
         G.setOnClickListener(v -> {
-            wv.loadUrl("about:blank");
-            CookieManager.getInstance().removeAllCookies(null);
-            String user = InstaClient.getNextUser();
-            String cookie = InstaClient.getUserProperty(user, "cookie");
-//            Log.d(TAG, "cookie set: " + cookie);
-            InstaWebView.setCookie("https://www.instagram.com", cookie);
-            InstaWebView.setCookie("https://i.instagram.com", cookie);
-//            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
-
-            InstaClient.switchToUser(user);
-
-            G.setText(user);
-
+            biometricAuth.authenticate();
         });
         H.setOnClickListener(v -> {
             CookieManager.getInstance().removeAllCookies(null);
@@ -171,6 +167,24 @@ public class MainActivity extends AppCompatActivity {
         spEditor = sharedPreferences.edit();
 
         initializeUI();
+
+        handler = new Handler(Looper.getMainLooper());
+        biometricAuth = new BiometricAuth(this, () -> {
+            CookieManager.getInstance().removeAllCookies(null);
+            String user = InstaClient.getNextUser();
+            String cookie = InstaClient.getUserProperty(user, "cookie");
+//            Log.d(TAG, "cookie set: " + cookie);
+            InstaWebView.setCookie("https://www.instagram.com", cookie);
+            InstaWebView.setCookie("https://i.instagram.com", cookie);
+//            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
+
+            InstaClient.switchToUser(user);
+
+            handler.post(() -> {
+                wv.loadUrl("about:blank");
+                G.setText(user);
+            });
+        });
     }
 
     @Override
