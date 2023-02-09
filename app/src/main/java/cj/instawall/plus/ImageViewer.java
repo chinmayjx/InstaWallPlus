@@ -1,11 +1,13 @@
 package cj.instawall.plus;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 
 import androidx.annotation.Nullable;
@@ -52,12 +54,56 @@ public class ImageViewer extends View {
         background = Bitmap.createBitmap(clr, w, h, Bitmap.Config.ARGB_8888);
     }
 
+    @SuppressLint("DrawAllocation")
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        Bitmap f;
+        if (scaleFactor >= 1) f = Bitmap.createBitmap(
+                cur,
+                (int) ((scaleFactor - 1)/2 * pivotX),
+                (int) ((scaleFactor - 1)/2 * pivotY),
+                (int) (cur.getWidth() / scaleFactor),
+                (int) (cur.getHeight() / scaleFactor));
+        else f = cur;
+        int w = this.getWidth();
+        int sh = (int) ((float) w / (float) f.getWidth() * (float) f.getHeight());
+        f = Bitmap.createScaledBitmap(f, w, sh, true);
         if (background == null) return;
-        Log.d(TAG, "onDraw: " + this.getWidth() + " " + this.getHeight());
         canvas.drawBitmap(background, 0, 0, paint);
-        canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
+        canvas.drawBitmap(f, 0, (int) ((background.getHeight() - f.getHeight()) / 2.0), paint);
+    }
+
+    private boolean scaling = false;
+    private float startScale = 0;
+    private float scaleFactor = 1;
+    private int pivotX = 0, pivotY = 0;
+
+    public float twoFingerDistance(MotionEvent e) {
+        float x1 = e.getX(0), x2 = e.getX(1);
+        float y1 = e.getY(0), y2 = e.getY(1);
+        return (float) Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+//        Log.d(TAG, "onTouchEvent: " + event.getPointerCount());
+        if (e.getPointerCount() >= 2) {
+            if (!scaling) {
+                startScale = twoFingerDistance(e);
+                pivotX=(int)((e.getX(0)+e.getX(1))/2);
+                pivotY=(int)((e.getY(0)+e.getY(1))/2);
+            }
+            scaling = true;
+            scaleFactor = twoFingerDistance(e) / startScale;
+            Log.d(TAG, "onTouchEvent: " + scaleFactor);
+            invalidate();
+        }
+        if (e.getAction() == MotionEvent.ACTION_UP) {
+            scaling = false;
+            scaleFactor = 1;
+            invalidate();
+        }
+        return super.onTouchEvent(e);
     }
 }
