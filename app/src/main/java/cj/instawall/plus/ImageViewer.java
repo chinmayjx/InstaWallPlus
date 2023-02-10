@@ -65,7 +65,11 @@ public class ImageViewer extends View {
         canvas.save();
         canvas.scale(scaleFactor, scaleFactor, pivotX, pivotY);
         canvas.rotate(rotation, pivotX, pivotY);
-        canvas.translate(translateX / scaleFactor, translateY / scaleFactor);
+        float nx, ny;
+        float rad = (float) Math.toRadians(rotation);
+        nx = (float) (translateX * Math.cos(rad) + translateY * Math.sin(rad));
+        ny = (float) (-translateX * Math.sin(rad) + translateY * Math.cos(rad));
+        canvas.translate(nx / scaleFactor, ny / scaleFactor);
         canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
         canvas.restore();
     }
@@ -74,8 +78,8 @@ public class ImageViewer extends View {
     private float startScale = 0;
     private float startAngle = 0, rotation = 0;
     private float scaleFactor = 1;
-    private int pivotX = 0, pivotY = 0;
-    private int translateX = 0, translateY = 0;
+    private float pivotX = 0, pivotY = 0;
+    private float translateX = 0, translateY = 0;
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
@@ -101,26 +105,31 @@ public class ImageViewer extends View {
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
             scaling = false;
-            scaleFactor = 1;
-            translateX = 0;
-            translateY = 0;
             invalidate();
+            lastUpdate = System.currentTimeMillis();
             restore();
         }
         return super.onTouchEvent(e);
     }
 
-    float velocity = 0.1f;
-    long frequency = 100;
+    float velocity = 0.01f;
+    long lastUpdate = 0;
+    long frequency = 60;
+    final float ZERO = 0.01f;
 
     void restore() {
         new Thread(() -> {
             try {
-                for (;;) {
-                    rotation-=rotation*velocity;
-                    if(rotation<=0) break;
-                    invalidate();
-                    Thread.sleep(20);
+                for (; ; ) {
+                    rotation -= rotation * velocity * (System.currentTimeMillis() - lastUpdate);
+                    translateX -= translateX * velocity * (System.currentTimeMillis() - lastUpdate);
+                    translateY -= translateY * velocity * (System.currentTimeMillis() - lastUpdate);
+                    scaleFactor += (1 - scaleFactor) * velocity * (System.currentTimeMillis() - lastUpdate);
+                    if (Math.abs(rotation) <= ZERO && Math.abs(translateX) <= ZERO && Math.abs(translateY) <= ZERO && Math.abs(scaleFactor - 1) < ZERO)
+                        break;
+                    lastUpdate = System.currentTimeMillis();
+                    postInvalidate();
+                    Thread.sleep(1000 / frequency);
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
