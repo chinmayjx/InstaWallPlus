@@ -54,49 +54,48 @@ public class ImageViewer extends View {
         background = Bitmap.createBitmap(clr, w, h, Bitmap.Config.ARGB_8888);
     }
 
-    @SuppressLint("DrawAllocation")
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        Bitmap f;
-        if (scaleFactor >= 1) f = Bitmap.createBitmap(
-                cur,
-                (int) ((scaleFactor - 1)/2 * pivotX),
-                (int) ((scaleFactor - 1)/2 * pivotY),
-                (int) (cur.getWidth() / scaleFactor),
-                (int) (cur.getHeight() / scaleFactor));
-        else f = cur;
-        int w = this.getWidth();
-        int sh = (int) ((float) w / (float) f.getWidth() * (float) f.getHeight());
-        f = Bitmap.createScaledBitmap(f, w, sh, true);
-        if (background == null) return;
         canvas.drawBitmap(background, 0, 0, paint);
-        canvas.drawBitmap(f, 0, (int) ((background.getHeight() - f.getHeight()) / 2.0), paint);
+        canvas.save();
+        if (scaling) {
+            canvas.scale(scaleFactor, scaleFactor, pivotX, pivotY);
+            canvas.rotate(rotation, pivotX, pivotY);
+            canvas.translate(translateX / scaleFactor, translateY / scaleFactor);
+        }
+        if (background == null) return;
+        canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
+        canvas.restore();
     }
 
     private boolean scaling = false;
     private float startScale = 0;
+    private float startAngle = 0, rotation = 0;
     private float scaleFactor = 1;
     private int pivotX = 0, pivotY = 0;
-
-    public float twoFingerDistance(MotionEvent e) {
-        float x1 = e.getX(0), x2 = e.getX(1);
-        float y1 = e.getY(0), y2 = e.getY(1);
-        return (float) Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
-    }
+    private int translateX = 0, translateY = 0;
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-//        Log.d(TAG, "onTouchEvent: " + event.getPointerCount());
         if (e.getPointerCount() >= 2) {
+            float x1 = e.getX(0), x2 = e.getX(1);
+            float y1 = e.getY(0), y2 = e.getY(1);
+            float twoFingerDist = (float) Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+            float deg = (float) (Math.atan2((y2 - y1), (x2 - x1)) * 180 / Math.PI);
+            int mx = (int) ((x1 + x2) / 2);
+            int my = (int) ((y1 + y2) / 2);
             if (!scaling) {
-                startScale = twoFingerDistance(e);
-                pivotX=(int)((e.getX(0)+e.getX(1))/2);
-                pivotY=(int)((e.getY(0)+e.getY(1))/2);
+                startScale = twoFingerDist;
+                startAngle = deg;
+                pivotX = mx;
+                pivotY = my;
             }
             scaling = true;
-            scaleFactor = twoFingerDistance(e) / startScale;
-            Log.d(TAG, "onTouchEvent: " + scaleFactor);
+            scaleFactor = twoFingerDist / startScale;
+            rotation = deg - startAngle;
+            translateX = mx - pivotX;
+            translateY = my - pivotY;
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
