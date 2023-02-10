@@ -5,6 +5,8 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -19,6 +21,7 @@ public class ImageViewer extends View {
     Bitmap cur;
     Paint paint = new Paint();
     Bitmap background;
+    private Handler handler;
 
     public ImageViewer(Context context) {
         super(context);
@@ -34,6 +37,7 @@ public class ImageViewer extends View {
 
     public ImageViewer(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        this.handler = new Handler(Looper.getMainLooper());
     }
 
     public void loadBitmap(Bitmap b) {
@@ -59,12 +63,9 @@ public class ImageViewer extends View {
         super.onDraw(canvas);
         canvas.drawBitmap(background, 0, 0, paint);
         canvas.save();
-        if (scaling) {
-            canvas.scale(scaleFactor, scaleFactor, pivotX, pivotY);
-            canvas.rotate(rotation, pivotX, pivotY);
-            canvas.translate(translateX / scaleFactor, translateY / scaleFactor);
-        }
-        if (background == null) return;
+        canvas.scale(scaleFactor, scaleFactor, pivotX, pivotY);
+        canvas.rotate(rotation, pivotX, pivotY);
+        canvas.translate(translateX / scaleFactor, translateY / scaleFactor);
         canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
         canvas.restore();
     }
@@ -101,8 +102,29 @@ public class ImageViewer extends View {
         if (e.getAction() == MotionEvent.ACTION_UP) {
             scaling = false;
             scaleFactor = 1;
+            translateX = 0;
+            translateY = 0;
             invalidate();
+            restore();
         }
         return super.onTouchEvent(e);
+    }
+
+    float velocity = 0.1f;
+    long frequency = 100;
+
+    void restore() {
+        new Thread(() -> {
+            try {
+                for (;;) {
+                    rotation-=rotation*velocity;
+                    if(rotation<=0) break;
+                    invalidate();
+                    Thread.sleep(20);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 }
