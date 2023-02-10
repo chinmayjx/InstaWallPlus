@@ -67,8 +67,9 @@ public class ImageViewer extends View {
         canvas.rotate(rotation, pivotX, pivotY);
         float nx, ny;
         float rad = (float) Math.toRadians(rotation);
-        nx = (float) (translateX * Math.cos(rad) + translateY * Math.sin(rad));
-        ny = (float) (-translateX * Math.sin(rad) + translateY * Math.cos(rad));
+        double sin = Math.sin(rad), cos = Math.cos(rad);
+        nx = (float) (translateX * cos + translateY * sin);
+        ny = (float) (-translateX * sin + translateY * cos);
         canvas.translate(nx / scaleFactor, ny / scaleFactor);
         canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
         canvas.restore();
@@ -81,9 +82,32 @@ public class ImageViewer extends View {
     private float pivotX = 0, pivotY = 0;
     private float translateX = 0, translateY = 0;
 
+    private boolean sliding = false;
+    private float startX = 0, startY = 0;
+    // 0 = undecided, 1 = x, 2 = y
+    private int slideDirection = 0;
+    private float slideThreshold = 10;
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        if (e.getPointerCount() >= 2) {
+        if (e.getPointerCount() == 1) {
+            if (!sliding) {
+                startX = e.getX();
+                startY = e.getY();
+                sliding = true;
+            }
+            float delX = e.getX() - startX;
+            float delY = e.getY() - startY;
+            if (slideDirection == 0) {
+                if (Math.abs(delX) > slideThreshold) slideDirection = 1;
+                else if (Math.abs(delY) > slideThreshold) slideDirection = 2;
+            } else {
+                if (slideDirection == 1) translateX = delX;
+                else if (slideDirection == 2) translateY = delY;
+                invalidate();
+            }
+//            Log.d(TAG, "onTouchEvent: " + (e.getX()-startX) + " " + (e.getY()-startY));
+        } else if (e.getPointerCount() >= 2) {
             float x1 = e.getX(0), x2 = e.getX(1);
             float y1 = e.getY(0), y2 = e.getY(1);
             float twoFingerDist = (float) Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
@@ -95,8 +119,8 @@ public class ImageViewer extends View {
                 startAngle = deg;
                 pivotX = mx;
                 pivotY = my;
+                scaling = true;
             }
-            scaling = true;
             scaleFactor = twoFingerDist / startScale;
             rotation = deg - startAngle;
             translateX = mx - pivotX;
@@ -104,7 +128,9 @@ public class ImageViewer extends View {
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
+            sliding = false;
             scaling = false;
+            slideDirection = 0;
             invalidate();
             lastUpdate = System.currentTimeMillis();
             restore();
