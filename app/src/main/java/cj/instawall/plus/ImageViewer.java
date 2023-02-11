@@ -207,11 +207,16 @@ public class ImageViewer extends View {
             imgCenter.transform.translateY = my - imgCenter.transform.pivotY;
             invalidate();
         }
+        if (e.getAction() == MotionEvent.ACTION_DOWN) {
+            if (restoreThread != null && restoreThread.isAlive()) {
+                restoreThread.interrupt();
+                restoreThread = null;
+            }
+        }
         if (e.getAction() == MotionEvent.ACTION_UP) {
-            scaling = false;
             lastUpdate = System.currentTimeMillis();
 
-            if (sliding) {
+            if (!scaling && sliding) {
                 float delX = e.getX() - startX;
                 float delY = e.getY() - startY;
                 if (slideDirection == 2) {
@@ -240,6 +245,7 @@ public class ImageViewer extends View {
             invalidate();
             restore();
             slideDirection = 0;
+            scaling = false;
             sliding = false;
         }
         return super.onTouchEvent(e);
@@ -249,9 +255,10 @@ public class ImageViewer extends View {
     long lastUpdate = 0;
     long frequency = 60;
     final float ZERO = 0.05f;
+    Thread restoreThread;
 
     void restore() {
-        new Thread(() -> {
+        restoreThread = new Thread(() -> {
             try {
                 for (; ; ) {
                     imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
@@ -269,6 +276,7 @@ public class ImageViewer extends View {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
+        restoreThread.start();
     }
 }
