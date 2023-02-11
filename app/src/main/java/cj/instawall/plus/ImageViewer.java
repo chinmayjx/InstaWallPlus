@@ -63,7 +63,9 @@ public class ImageViewer extends View {
         imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
         imgBottom.transform.opacity = 0;
         CJImage ref = imgBottom;
+        ref.startLoading(this::postInvalidate);
         instaClient.act_getRandomImageAsync((path) -> {
+            ref.stopLoading();
             ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
             postInvalidate();
         });
@@ -74,7 +76,9 @@ public class ImageViewer extends View {
         imgLeft.transform.translateX = -this.getWidth();
         imgLeft.transform.opacity = 0;
         CJImage ref = imgLeft;
+        ref.startLoading(this::postInvalidate);
         instaClient.act_getRandomImageAsync((path) -> {
+            ref.stopLoading();
             ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
             postInvalidate();
         });
@@ -85,7 +89,9 @@ public class ImageViewer extends View {
         imgRight.transform.translateX = this.getWidth();
         imgRight.transform.opacity = 0;
         CJImage ref = imgRight;
+        ref.startLoading(this::postInvalidate);
         instaClient.act_getRandomImageAsync((path) -> {
+            ref.stopLoading();
             ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
             postInvalidate();
         });

@@ -57,7 +57,7 @@ public class CJImage {
     public CJImage(Bitmap bitmap, Transform transform, Point position) {
         this.transform = transform;
         this.transform.target = new Transform();
-        this.bitmap = bitmap;
+        this.bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
         this.position = position;
     }
 
@@ -82,5 +82,41 @@ public class CJImage {
         canvas.drawBitmap(bitmap, position.x, position.y, paint);
         canvas.restore();
         paint.setAlpha(oldOpacity);
+    }
+
+    Thread loadThread;
+    boolean loading = true;
+    int loadSide = 300, loadN = 10;
+
+    public void startLoading(Runnable invalidate) {
+        loadThread = new Thread(() -> {
+            try {
+                int tlx = bitmap.getWidth() / 2 - loadSide / 2;
+                int tly = bitmap.getHeight() / 2 - loadSide / 2;
+                int ss = loadSide / loadN;
+                for (; ; ) {
+                    for (int i = tly; i < tly + loadSide; i += ss) {
+                        for (int j = tlx; j < tlx + loadSide; j += ss) {
+                            int clr = Math.random() < 0.5 ? 0 : -1;
+                            for (int ii = 0; ii < ss; ii++) {
+                                for (int jj = 0; jj < ss; jj++) {
+                                    if(!loading) return;
+                                    bitmap.setPixel(j + jj, i + ii, clr);
+                                }
+                            }
+                        }
+                    }
+                    Thread.sleep(1000/15);
+                    invalidate.run();
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        loadThread.start();
+    }
+
+    public void stopLoading() {
+        loading = false;
     }
 }
