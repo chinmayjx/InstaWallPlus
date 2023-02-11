@@ -7,21 +7,21 @@ import android.graphics.Point;
 
 public class CJImage {
     public static class Transform {
-        public float pivotX, pivotY, translateX, translateY, scaleFactor, rotation;
-        public static Transform DEFAULT = new Transform();
+        public float pivotX, pivotY, translateX, translateY, scaleFactor, rotation, opacity;
         public Transform target;
 
-        public Transform(float pivotX, float pivotY, float translateX, float translateY, float scaleFactor, float rotation) {
+        public Transform(float pivotX, float pivotY, float translateX, float translateY, float scaleFactor, float rotation, float opacity) {
             this.pivotX = pivotX;
             this.pivotY = pivotY;
             this.translateX = translateX;
             this.translateY = translateY;
             this.scaleFactor = scaleFactor;
             this.rotation = rotation;
+            this.opacity = opacity;
         }
 
         public Transform() {
-            this(0, 0, 0, 0, 1, 0);
+            this(0, 0, 0, 0, 1, 0, 1);
         }
 
         public void absoluteToTarget(float len) {
@@ -29,6 +29,7 @@ public class CJImage {
             translateX += (target.translateX - translateX) * len;
             translateY += (target.translateY - translateY) * len;
             scaleFactor += (target.scaleFactor - scaleFactor) * len;
+            opacity += (target.opacity - opacity) * len;
         }
 
         public float distanceToTarget() {
@@ -37,6 +38,7 @@ public class CJImage {
                             + (translateX - target.translateX) * (translateX - target.translateX)
                             + (translateY - target.translateY) * (translateY - target.translateY)
                             + (scaleFactor - target.scaleFactor) * (scaleFactor - target.scaleFactor)
+                            + (opacity - target.opacity) * (opacity - target.opacity)
             );
         }
     }
@@ -57,6 +59,8 @@ public class CJImage {
 
     public void drawOnCanvas(Canvas canvas, Paint paint) {
         canvas.save();
+        int oldOpacity = paint.getAlpha();
+        paint.setAlpha((int) (transform.opacity * 255));
         canvas.scale(transform.scaleFactor, transform.scaleFactor, transform.pivotX, transform.pivotY);
         canvas.rotate(transform.rotation, transform.pivotX, transform.pivotY);
         float nx, ny;
@@ -67,5 +71,6 @@ public class CJImage {
         canvas.translate(nx / transform.scaleFactor, ny / transform.scaleFactor);
         canvas.drawBitmap(bitmap, position.x, position.y, paint);
         canvas.restore();
+        paint.setAlpha(oldOpacity);
     }
 }

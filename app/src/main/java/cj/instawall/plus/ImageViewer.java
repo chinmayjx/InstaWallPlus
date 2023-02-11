@@ -1,6 +1,5 @@
 package cj.instawall.plus;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -20,7 +19,7 @@ import java.util.Arrays;
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
     Bitmap cur;
-    CJImage img1;
+    CJImage imgCenter, imgRight, imgLeft, imgBottom;
     Paint paint = new Paint();
     Bitmap background;
     private Handler handler;
@@ -42,13 +41,24 @@ public class ImageViewer extends View {
         this.handler = new Handler(Looper.getMainLooper());
     }
 
-    public void loadBitmap(Bitmap b) {
-        if (this.getWidth() == 0 && this.getHeight() == 0) return;
+    CJImage imageFromBitmap(Bitmap b) {
         int w = this.getWidth();
-        int h = this.getHeight();
         int sh = (int) ((float) w / (float) b.getWidth() * (float) b.getHeight());
         cur = Bitmap.createScaledBitmap(b, w, sh, true);
-        img1 = new CJImage(cur, new Point(0, (int) ((background.getHeight() - cur.getHeight()) / 2.0)));
+        return new CJImage(cur, new Point(0, (int) ((background.getHeight() - cur.getHeight()) / 2.0)));
+    }
+
+    public void loadBitmap(Bitmap b, Bitmap b2) {
+        imgCenter = imageFromBitmap(b);
+        imgRight = imageFromBitmap(b2);
+        imgRight.transform.translateX = this.getWidth();
+        imgRight.transform.opacity = 0;
+        imgLeft = imageFromBitmap(b2);
+        imgLeft.transform.translateX = -this.getWidth();
+        imgLeft.transform.opacity = 0;
+        imgBottom = imageFromBitmap(b2);
+        imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
+        imgBottom.transform.opacity = 0;
         this.invalidate();
     }
 
@@ -65,7 +75,9 @@ public class ImageViewer extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawBitmap(background, 0, 0, paint);
-        img1.drawOnCanvas(canvas, paint);
+        imgLeft.drawOnCanvas(canvas, paint);
+        imgRight.drawOnCanvas(canvas, paint);
+        imgCenter.drawOnCanvas(canvas, paint);
     }
 
     private boolean scaling = false;
@@ -92,8 +104,17 @@ public class ImageViewer extends View {
                 if (Math.abs(delX) > slideThreshold) slideDirection = 1;
                 else if (Math.abs(delY) > slideThreshold) slideDirection = 2;
             } else {
-                if (slideDirection == 1) img1.transform.translateX = delX;
-                else if (slideDirection == 2) img1.transform.translateY = delY;
+                if (slideDirection == 1) {
+                    imgCenter.transform.translateX = delX;
+                    imgCenter.transform.opacity = 1 - Math.abs(delX / this.getWidth());
+                    if (delX < 0) {
+                        imgRight.transform.translateX = this.getWidth() + delX;
+                        imgRight.transform.opacity = Math.abs(delX / this.getWidth());
+                    } else {
+                        imgLeft.transform.translateX = -this.getWidth() + delX;
+                        imgLeft.transform.opacity = Math.abs(delX / this.getWidth());
+                    }
+                } else if (slideDirection == 2) imgCenter.transform.translateY = delY;
                 invalidate();
             }
 //            Log.d(TAG, "onTouchEvent: " + (e.getX()-startX) + " " + (e.getY()-startY));
@@ -107,14 +128,14 @@ public class ImageViewer extends View {
             if (!scaling) {
                 startScale = twoFingerDist;
                 startAngle = deg;
-                img1.transform.pivotX = mx;
-                img1.transform.pivotY = my;
+                imgCenter.transform.pivotX = mx;
+                imgCenter.transform.pivotY = my;
                 scaling = true;
             }
-            img1.transform.scaleFactor = twoFingerDist / startScale;
-            img1.transform.rotation = deg - startAngle;
-            img1.transform.translateX = mx - img1.transform.pivotX;
-            img1.transform.translateY = my - img1.transform.pivotY;
+            imgCenter.transform.scaleFactor = twoFingerDist / startScale;
+            imgCenter.transform.rotation = deg - startAngle;
+            imgCenter.transform.translateX = mx - imgCenter.transform.pivotX;
+            imgCenter.transform.translateY = my - imgCenter.transform.pivotY;
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
@@ -123,7 +144,13 @@ public class ImageViewer extends View {
             slideDirection = 0;
             invalidate();
             lastUpdate = System.currentTimeMillis();
-            img1.transform.target = CJImage.Transform.DEFAULT;
+            imgCenter.transform.target = new CJImage.Transform();
+            CJImage.Transform rt = new CJImage.Transform();
+            rt.translateX = this.getWidth();
+            imgRight.transform.target = rt;
+            CJImage.Transform lt = new CJImage.Transform();
+            lt.translateX = -this.getWidth();
+            imgLeft.transform.target = lt;
             restore();
         }
         return super.onTouchEvent(e);
@@ -138,9 +165,11 @@ public class ImageViewer extends View {
         new Thread(() -> {
             try {
                 for (; ; ) {
-                    img1.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
 
-                    if (img1.transform.distanceToTarget() < ZERO)
+                    if (imgCenter.transform.distanceToTarget() < ZERO && imgRight.transform.distanceToTarget() < ZERO && imgLeft.transform.distanceToTarget() < ZERO)
                         break;
                     lastUpdate = System.currentTimeMillis();
                     postInvalidate();
