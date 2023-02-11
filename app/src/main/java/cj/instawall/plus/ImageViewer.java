@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Point;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
     Bitmap cur;
+    CJImage img1;
     Paint paint = new Paint();
     Bitmap background;
     private Handler handler;
@@ -46,6 +48,7 @@ public class ImageViewer extends View {
         int h = this.getHeight();
         int sh = (int) ((float) w / (float) b.getWidth() * (float) b.getHeight());
         cur = Bitmap.createScaledBitmap(b, w, sh, true);
+        img1 = new CJImage(cur, new Point(0, (int) ((background.getHeight() - cur.getHeight()) / 2.0)));
         this.invalidate();
     }
 
@@ -62,25 +65,12 @@ public class ImageViewer extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawBitmap(background, 0, 0, paint);
-        canvas.save();
-        canvas.scale(scaleFactor, scaleFactor, pivotX, pivotY);
-        canvas.rotate(rotation, pivotX, pivotY);
-        float nx, ny;
-        float rad = (float) Math.toRadians(rotation);
-        double sin = Math.sin(rad), cos = Math.cos(rad);
-        nx = (float) (translateX * cos + translateY * sin);
-        ny = (float) (-translateX * sin + translateY * cos);
-        canvas.translate(nx / scaleFactor, ny / scaleFactor);
-        canvas.drawBitmap(cur, 0, (int) ((background.getHeight() - cur.getHeight()) / 2.0), paint);
-        canvas.restore();
+        img1.drawOnCanvas(canvas, paint);
     }
 
     private boolean scaling = false;
     private float startScale = 0;
-    private float startAngle = 0, rotation = 0;
-    private float scaleFactor = 1;
-    private float pivotX = 0, pivotY = 0;
-    private float translateX = 0, translateY = 0;
+    private float startAngle = 0;
 
     private boolean sliding = false;
     private float startX = 0, startY = 0;
@@ -102,8 +92,8 @@ public class ImageViewer extends View {
                 if (Math.abs(delX) > slideThreshold) slideDirection = 1;
                 else if (Math.abs(delY) > slideThreshold) slideDirection = 2;
             } else {
-                if (slideDirection == 1) translateX = delX;
-                else if (slideDirection == 2) translateY = delY;
+                if (slideDirection == 1) img1.transform.translateX = delX;
+                else if (slideDirection == 2) img1.transform.translateY = delY;
                 invalidate();
             }
 //            Log.d(TAG, "onTouchEvent: " + (e.getX()-startX) + " " + (e.getY()-startY));
@@ -117,14 +107,14 @@ public class ImageViewer extends View {
             if (!scaling) {
                 startScale = twoFingerDist;
                 startAngle = deg;
-                pivotX = mx;
-                pivotY = my;
+                img1.transform.pivotX = mx;
+                img1.transform.pivotY = my;
                 scaling = true;
             }
-            scaleFactor = twoFingerDist / startScale;
-            rotation = deg - startAngle;
-            translateX = mx - pivotX;
-            translateY = my - pivotY;
+            img1.transform.scaleFactor = twoFingerDist / startScale;
+            img1.transform.rotation = deg - startAngle;
+            img1.transform.translateX = mx - img1.transform.pivotX;
+            img1.transform.translateY = my - img1.transform.pivotY;
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
@@ -141,17 +131,17 @@ public class ImageViewer extends View {
     float velocity = 0.01f;
     long lastUpdate = 0;
     long frequency = 60;
-    final float ZERO = 0.01f;
+    final float ZERO = 0.05f;
 
     void restore() {
         new Thread(() -> {
             try {
                 for (; ; ) {
-                    rotation -= rotation * velocity * (System.currentTimeMillis() - lastUpdate);
-                    translateX -= translateX * velocity * (System.currentTimeMillis() - lastUpdate);
-                    translateY -= translateY * velocity * (System.currentTimeMillis() - lastUpdate);
-                    scaleFactor += (1 - scaleFactor) * velocity * (System.currentTimeMillis() - lastUpdate);
-                    if (Math.abs(rotation) <= ZERO && Math.abs(translateX) <= ZERO && Math.abs(translateY) <= ZERO && Math.abs(scaleFactor - 1) < ZERO)
+                    img1.transform.rotation -= img1.transform.rotation * velocity * (System.currentTimeMillis() - lastUpdate);
+                    img1.transform.translateX -= img1.transform.translateX * velocity * (System.currentTimeMillis() - lastUpdate);
+                    img1.transform.translateY -= img1.transform.translateY * velocity * (System.currentTimeMillis() - lastUpdate);
+                    img1.transform.scaleFactor += (1 - img1.transform.scaleFactor) * velocity * (System.currentTimeMillis() - lastUpdate);
+                    if (Math.abs(img1.transform.rotation) <= ZERO && Math.abs(img1.transform.translateX) <= ZERO && Math.abs(img1.transform.translateY) <= ZERO && Math.abs(img1.transform.scaleFactor - 1) < ZERO)
                         break;
                     lastUpdate = System.currentTimeMillis();
                     postInvalidate();
