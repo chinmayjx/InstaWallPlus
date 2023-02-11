@@ -4,8 +4,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.util.Log;
 
 public class CJImage {
+    public static final String TAG = "CJ";
+
     public static class Transform {
         public float pivotX, pivotY, translateX, translateY, scaleFactor, rotation, opacity;
         public Transform target;
@@ -53,8 +56,15 @@ public class CJImage {
 
     public CJImage(Bitmap bitmap, Transform transform, Point position) {
         this.transform = transform;
+        this.transform.target = new Transform();
         this.bitmap = bitmap;
         this.position = position;
+    }
+
+    public void changeBitmap(Bitmap b, float containerWidth, float containerHeight) {
+        int sh = (int) (containerWidth / (float) b.getWidth() * (float) b.getHeight());
+        bitmap = Bitmap.createScaledBitmap(b, (int) containerWidth, sh, true);
+        position.y = (int) ((containerHeight - bitmap.getHeight()) / 2);
     }
 
     public void drawOnCanvas(Canvas canvas, Paint paint) {

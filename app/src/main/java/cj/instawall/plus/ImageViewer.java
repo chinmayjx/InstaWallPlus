@@ -2,6 +2,7 @@ package cj.instawall.plus;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Point;
@@ -18,47 +19,105 @@ import java.util.Arrays;
 
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
-    Bitmap cur;
     CJImage imgCenter, imgRight, imgLeft, imgBottom;
     Paint paint = new Paint();
     Bitmap background;
-    private Handler handler;
+    InstaClient instaClient;
+
 
     public ImageViewer(Context context) {
-        super(context);
+        this(context, null);
     }
 
     public ImageViewer(Context context, @Nullable AttributeSet attrs) {
-        super(context, attrs);
+        this(context, attrs, 0);
     }
 
     public ImageViewer(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
+        this(context, attrs, defStyleAttr, 0);
     }
 
     public ImageViewer(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        this.handler = new Handler(Looper.getMainLooper());
+        try {
+            instaClient = InstaClient.getInstance(this.getContext());
+        } catch (Exception e) {
+            Log.e(TAG, "ImageViewer: F from InstaClient");
+            e.printStackTrace();
+        }
+    }
+
+    Bitmap scaleBitmapToWidth(Bitmap b) {
+        int w = this.getWidth();
+        int sh = (int) ((float) w / (float) b.getWidth() * (float) b.getHeight());
+        return Bitmap.createScaledBitmap(b, w, sh, true);
     }
 
     CJImage imageFromBitmap(Bitmap b) {
-        int w = this.getWidth();
-        int sh = (int) ((float) w / (float) b.getWidth() * (float) b.getHeight());
-        cur = Bitmap.createScaledBitmap(b, w, sh, true);
-        return new CJImage(cur, new Point(0, (int) ((background.getHeight() - cur.getHeight()) / 2.0)));
+        Bitmap sb = scaleBitmapToWidth(b);
+        return new CJImage(sb, new Point(0, (int) ((background.getHeight() - sb.getHeight()) / 2.0)));
     }
 
-    public void loadBitmap(Bitmap b, Bitmap b2) {
-        imgCenter = imageFromBitmap(b);
-        imgRight = imageFromBitmap(b2);
-        imgRight.transform.translateX = this.getWidth();
-        imgRight.transform.opacity = 0;
-        imgLeft = imageFromBitmap(b2);
-        imgLeft.transform.translateX = -this.getWidth();
-        imgLeft.transform.opacity = 0;
-        imgBottom = imageFromBitmap(b2);
+    public void getRandomImageBottom() {
+        imgBottom = imageFromBitmap(background);
         imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
         imgBottom.transform.opacity = 0;
+        CJImage ref = imgBottom;
+        instaClient.act_getRandomImageAsync((path) -> {
+            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
+            postInvalidate();
+        });
+    }
+
+    public void getRandomImageLeft() {
+        imgLeft = imageFromBitmap(background);
+        imgLeft.transform.translateX = -this.getWidth();
+        imgLeft.transform.opacity = 0;
+        CJImage ref = imgLeft;
+        instaClient.act_getRandomImageAsync((path) -> {
+            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
+            postInvalidate();
+        });
+    }
+
+    public void getRandomImageRight() {
+        imgRight = imageFromBitmap(background);
+        imgRight.transform.translateX = this.getWidth();
+        imgRight.transform.opacity = 0;
+        CJImage ref = imgRight;
+        instaClient.act_getRandomImageAsync((path) -> {
+            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
+            postInvalidate();
+        });
+    }
+
+    public CJImage.Transform rightTransform() {
+        CJImage.Transform rt = new CJImage.Transform();
+        rt.translateX = this.getWidth();
+        rt.opacity = 0;
+        return rt;
+    }
+
+    CJImage.Transform leftTransform() {
+        CJImage.Transform lt = new CJImage.Transform();
+        lt.translateX = -this.getWidth();
+        lt.opacity = 0;
+        return lt;
+    }
+
+    CJImage.Transform bottomTransform() {
+        CJImage.Transform bt = new CJImage.Transform();
+        bt.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
+        bt.opacity = 0;
+        return bt;
+    }
+
+    public void loadBitmap(Bitmap b) {
+        imgCenter = imageFromBitmap(b);
+        getRandomImageBottom();
+        getRandomImageLeft();
+        getRandomImageRight();
+
         this.invalidate();
     }
 
@@ -89,7 +148,8 @@ public class ImageViewer extends View {
     private float startX = 0, startY = 0;
     // 0 = undecided, 1 = x, 2 = y
     private int slideDirection = 0;
-    private float slideThreshold = 10;
+    private final float slideThreshold = 10, slideSwitchDistance = 500, slideSwitchVelocity = 1.75f;
+    long slideStartTime = 0;
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
@@ -98,6 +158,7 @@ public class ImageViewer extends View {
                 startX = e.getX();
                 startY = e.getY();
                 sliding = true;
+                slideStartTime = System.currentTimeMillis();
             }
             float delX = e.getX() - startX;
             float delY = e.getY() - startY;
@@ -147,25 +208,39 @@ public class ImageViewer extends View {
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
-            sliding = false;
             scaling = false;
-            slideDirection = 0;
-            invalidate();
             lastUpdate = System.currentTimeMillis();
+
+            if (sliding) {
+                float delX = e.getX() - startX;
+                float delY = e.getY() - startY;
+                if (slideDirection == 2) {
+                    float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
+                    if (delY < -slideSwitchDistance || vel > slideSwitchVelocity) {
+                        imgCenter = imgBottom;
+                        getRandomImageBottom();
+                    }
+                } else if (slideDirection == 1) {
+                    float vel = Math.abs(delX) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
+                    if (delX > slideSwitchDistance || (delX > 0 && vel > slideSwitchVelocity)) {
+                        imgCenter = imgLeft;
+                        getRandomImageLeft();
+                    } else if (delX < -slideSwitchDistance || (delX < 0 && vel > slideSwitchVelocity)) {
+                        imgCenter = imgRight;
+                        getRandomImageRight();
+                    }
+                }
+            }
+
             imgCenter.transform.target = new CJImage.Transform();
-            CJImage.Transform rt = new CJImage.Transform();
-            rt.translateX = this.getWidth();
-            rt.opacity = 0;
-            imgRight.transform.target = rt;
-            CJImage.Transform lt = new CJImage.Transform();
-            lt.translateX = -this.getWidth();
-            lt.opacity = 0;
-            imgLeft.transform.target = lt;
-            CJImage.Transform bt = new CJImage.Transform();
-            bt.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
-            bt.opacity = 0;
-            imgBottom.transform.target = bt;
+
+            imgRight.transform.target = rightTransform();
+            imgLeft.transform.target = leftTransform();
+            imgBottom.transform.target = bottomTransform();
+            invalidate();
             restore();
+            slideDirection = 0;
+            sliding = false;
         }
         return super.onTouchEvent(e);
     }
