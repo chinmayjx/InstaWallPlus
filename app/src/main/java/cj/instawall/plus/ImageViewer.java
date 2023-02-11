@@ -123,12 +123,13 @@ public class ImageViewer extends View {
             slideDirection = 0;
             invalidate();
             lastUpdate = System.currentTimeMillis();
+            img1.transform.target = CJImage.Transform.DEFAULT;
             restore();
         }
         return super.onTouchEvent(e);
     }
 
-    float velocity = 0.01f;
+    float velocity = 0.02f;
     long lastUpdate = 0;
     long frequency = 60;
     final float ZERO = 0.05f;
@@ -137,11 +138,9 @@ public class ImageViewer extends View {
         new Thread(() -> {
             try {
                 for (; ; ) {
-                    img1.transform.rotation -= img1.transform.rotation * velocity * (System.currentTimeMillis() - lastUpdate);
-                    img1.transform.translateX -= img1.transform.translateX * velocity * (System.currentTimeMillis() - lastUpdate);
-                    img1.transform.translateY -= img1.transform.translateY * velocity * (System.currentTimeMillis() - lastUpdate);
-                    img1.transform.scaleFactor += (1 - img1.transform.scaleFactor) * velocity * (System.currentTimeMillis() - lastUpdate);
-                    if (Math.abs(img1.transform.rotation) <= ZERO && Math.abs(img1.transform.translateX) <= ZERO && Math.abs(img1.transform.translateY) <= ZERO && Math.abs(img1.transform.scaleFactor - 1) < ZERO)
+                    img1.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+
+                    if (img1.transform.distanceToTarget() < ZERO)
                         break;
                     lastUpdate = System.currentTimeMillis();
                     postInvalidate();
