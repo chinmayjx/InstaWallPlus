@@ -77,6 +77,7 @@ public class ImageViewer extends View {
         canvas.drawBitmap(background, 0, 0, paint);
         imgLeft.drawOnCanvas(canvas, paint);
         imgRight.drawOnCanvas(canvas, paint);
+        imgBottom.drawOnCanvas(canvas, paint);
         imgCenter.drawOnCanvas(canvas, paint);
     }
 
@@ -114,7 +115,14 @@ public class ImageViewer extends View {
                         imgLeft.transform.translateX = -this.getWidth() + delX;
                         imgLeft.transform.opacity = Math.abs(delX / this.getWidth());
                     }
-                } else if (slideDirection == 2) imgCenter.transform.translateY = delY;
+                } else if (slideDirection == 2) {
+                    imgCenter.transform.translateY = delY;
+                    imgCenter.transform.opacity = Math.max(1 - Math.abs(delY / imgCenter.bitmap.getHeight()), 0);
+                    if (delY < 0) {
+                        imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight() + delY;
+                        imgBottom.transform.opacity = Math.min(Math.abs(delY / imgCenter.bitmap.getHeight()), 1);
+                    }
+                }
                 invalidate();
             }
 //            Log.d(TAG, "onTouchEvent: " + (e.getX()-startX) + " " + (e.getY()-startY));
@@ -147,10 +155,16 @@ public class ImageViewer extends View {
             imgCenter.transform.target = new CJImage.Transform();
             CJImage.Transform rt = new CJImage.Transform();
             rt.translateX = this.getWidth();
+            rt.opacity = 0;
             imgRight.transform.target = rt;
             CJImage.Transform lt = new CJImage.Transform();
             lt.translateX = -this.getWidth();
+            lt.opacity = 0;
             imgLeft.transform.target = lt;
+            CJImage.Transform bt = new CJImage.Transform();
+            bt.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
+            bt.opacity = 0;
+            imgBottom.transform.target = bt;
             restore();
         }
         return super.onTouchEvent(e);
@@ -168,8 +182,10 @@ public class ImageViewer extends View {
                     imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                     imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                     imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
 
-                    if (imgCenter.transform.distanceToTarget() < ZERO && imgRight.transform.distanceToTarget() < ZERO && imgLeft.transform.distanceToTarget() < ZERO)
+
+                    if (imgCenter.transform.distanceToTarget() < ZERO && imgRight.transform.distanceToTarget() < ZERO && imgLeft.transform.distanceToTarget() < ZERO && imgBottom.transform.distanceToTarget() < ZERO)
                         break;
                     lastUpdate = System.currentTimeMillis();
                     postInvalidate();
