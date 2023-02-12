@@ -107,4 +107,8 @@ public class CJImageUtil {
         }
         return Bitmap.createBitmap(img, left, top, right - left, bottom - top);
     }
+    public static Bitmap scaleToWidth(Bitmap b, int w){
+        int sh = (int) (w / (float) b.getWidth() * (float) b.getHeight());
+        return Bitmap.createScaledBitmap(b, w, sh, true);
+    }
 }

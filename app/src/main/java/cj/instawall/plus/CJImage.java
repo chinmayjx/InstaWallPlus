@@ -1,10 +1,13 @@
 package cj.instawall.plus;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.util.Log;
+
+import java.nio.file.Path;
 
 public class CJImage {
     public static final String TAG = "CJ";
@@ -49,22 +52,47 @@ public class CJImage {
     Transform transform;
     Bitmap bitmap;
     Point position;
+    Path path;
 
-    public CJImage(Bitmap bitmap, Point position) {
-        this(bitmap, new Transform(), position);
+    public CJImage(Path path, Point position) {
+        this(BitmapFactory.decodeFile(path.toString()), position);
+        this.path = path;
     }
 
-    public CJImage(Bitmap bitmap, Transform transform, Point position) {
+    public CJImage(Path path, Transform transform, Point position) {
+        init(BitmapFactory.decodeFile(path.toString()), transform, position);
+        this.path = path;
+    }
+
+    public CJImage(Path path, int containerWidth, int containerHeight) {
+        this(BitmapFactory.decodeFile(path.toString()), containerWidth, containerHeight);
+        this.path = path;
+    }
+
+    public CJImage(Bitmap bitmap, int containerWidth, int containerHeight) {
+        Bitmap sb = CJImageUtil.scaleToWidth(bitmap, containerWidth);
+        init(sb, new Transform(), new Point(0, (containerHeight - sb.getHeight()) / 2));
+    }
+
+    public CJImage(Bitmap bitmap, Point position) {
+        init(bitmap, new Transform(), position);
+    }
+
+    public void init(Bitmap bitmap, Transform transform, Point position) {
         this.transform = transform;
         this.transform.target = new Transform();
         this.bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
         this.position = position;
     }
 
-    public void changeBitmap(Bitmap b, float containerWidth, float containerHeight) {
-        int sh = (int) (containerWidth / (float) b.getWidth() * (float) b.getHeight());
-        bitmap = Bitmap.createScaledBitmap(b, (int) containerWidth, sh, true);
-        position.y = (int) ((containerHeight - bitmap.getHeight()) / 2);
+    public void changeImage(Path p, int containerWidth, int containerHeight) {
+        this.path = p;
+        changeBitmap(BitmapFactory.decodeFile(p.toString()), containerWidth, containerHeight);
+    }
+
+    public void changeBitmap(Bitmap b, int containerWidth, int containerHeight) {
+        bitmap = CJImageUtil.scaleToWidth(b, containerWidth);
+        position.y = (containerHeight - bitmap.getHeight()) / 2;
     }
 
     public void drawOnCanvas(Canvas canvas, Paint paint) {
@@ -100,13 +128,13 @@ public class CJImage {
                             int clr = Math.random() < 0.5 ? 0 : -1;
                             for (int ii = 0; ii < ss; ii++) {
                                 for (int jj = 0; jj < ss; jj++) {
-                                    if(!loading) return;
+                                    if (!loading) return;
                                     bitmap.setPixel(j + jj, i + ii, clr);
                                 }
                             }
                         }
                     }
-                    Thread.sleep(1000/15);
+                    Thread.sleep(1000 / 15);
                     invalidate.run();
                 }
             } catch (InterruptedException e) {

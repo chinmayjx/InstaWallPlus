@@ -15,6 +15,7 @@ import android.view.View;
 
 import androidx.annotation.Nullable;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 
 public class ImageViewer extends View {
@@ -26,7 +27,7 @@ public class ImageViewer extends View {
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
-            CJImage ref = imageFromBitmap(background);
+            CJImage ref = new CJImage(background, getWidth(), getHeight());
             ref.startLoading(ImageViewer.this::postInvalidate);
             instaClient.act_getRandomImageAsync((path) -> {
                 ref.stopLoading();
@@ -39,23 +40,13 @@ public class ImageViewer extends View {
         @Override
         public CJImage getPrevImage() {
             return getNextImage();
-        }
-
-        @Override
-        public boolean hasNextImage() {
-            return true;
-        }
-
-        @Override
-        public boolean hasPrevImage() {
-            return true;
         }
     };
 
     CJImageProvider sideImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
-            CJImage ref = imageFromBitmap(background);
+            CJImage ref = new CJImage(background, getWidth(), getHeight());
             ref.startLoading(ImageViewer.this::postInvalidate);
             instaClient.act_getRandomImageAsync((path) -> {
                 ref.stopLoading();
@@ -68,16 +59,6 @@ public class ImageViewer extends View {
         @Override
         public CJImage getPrevImage() {
             return getNextImage();
-        }
-
-        @Override
-        public boolean hasNextImage() {
-            return true;
-        }
-
-        @Override
-        public boolean hasPrevImage() {
-            return true;
         }
     };
 
@@ -102,17 +83,6 @@ public class ImageViewer extends View {
             Log.e(TAG, "ImageViewer: F from InstaClient");
             e.printStackTrace();
         }
-    }
-
-    Bitmap scaleBitmapToWidth(Bitmap b) {
-        int w = this.getWidth();
-        int sh = (int) ((float) w / (float) b.getWidth() * (float) b.getHeight());
-        return Bitmap.createScaledBitmap(b, w, sh, true);
-    }
-
-    CJImage imageFromBitmap(Bitmap b) {
-        Bitmap sb = scaleBitmapToWidth(b);
-        return new CJImage(sb, new Point(0, (int) ((background.getHeight() - sb.getHeight()) / 2.0)));
     }
 
     public void getRandomImageBottom() {
@@ -154,8 +124,8 @@ public class ImageViewer extends View {
         return bt;
     }
 
-    public void loadBitmap(Bitmap b) {
-        imgCenter = imageFromBitmap(b);
+    public void loadImage(Path p) {
+        imgCenter = new CJImage(p, getWidth(), getHeight());
         getRandomImageBottom();
         getRandomImageLeft();
         getRandomImageRight();

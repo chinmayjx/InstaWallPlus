@@ -81,7 +81,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         switch (action) {
             case View:
                 activity.showImageViewer();
-                activity.imageViewer.loadBitmap(BitmapFactory.decodeFile(p.toString()));
+                activity.imageViewer.loadImage(p);
                 break;
             case Select:
                 toggleSelection(pos);
