@@ -24,7 +24,11 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
@@ -32,15 +36,21 @@ public class ImageViewer extends View {
     Paint paint = new Paint();
     Bitmap background;
     ExecutorService executor = Executors.newCachedThreadPool();
+    ScheduledExecutorService singleExecutor = Executors.newSingleThreadScheduledExecutor();
+    ScheduledFuture<?> singleTask;
     InstaClient instaClient;
+    JSONObject currentPostInfo = null;
+    int currentImageIndex = 0;
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
             CJImage ref = new CJImage(background, getWidth(), getHeight());
+            ref.transform.translateY = -ref.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
+            ref.transform.opacity = 0;
             ref.startLoading(ImageViewer.this::postInvalidate);
             instaClient.act_getRandomImageAsync((path) -> {
                 ref.stopLoading();
-                ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), getWidth(), getHeight());
+                ref.changeImage(path, getWidth(), getHeight());
                 postInvalidate();
             });
             return ref;
@@ -52,32 +62,42 @@ public class ImageViewer extends View {
         }
     };
 
+    CJImage getImageAtIndexInCurrentPost(int ix) {
+        if (currentPostInfo == null || ix < 0 || ix > instaClient.numberOfImagesInPost(currentPostInfo) - 1)
+            return null;
+        CJImage ref = new CJImage(background, getWidth(), getHeight());
+        ref.transform.translateX = getWidth();
+        ref.transform.opacity = 0;
+        ref.startLoading(ImageViewer.this::postInvalidate);
+        executor.execute(() -> {
+            try {
+                Path pt = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, ix)));
+                ref.stopLoading();
+                ref.changeImage(pt, getWidth(), getHeight());
+                postInvalidate();
+            } catch (Exception e) {
+                Log.e(TAG, "getNextImage: " + Log.getStackTraceString(e));
+            }
+        });
+        return ref;
+    }
+
     CJImageProvider sideImageProvider = new CJImageProvider() {
+
         @Override
         public CJImage getNextImage() {
-            CJImage ref = new CJImage(background, getWidth(), getHeight());
-            ref.startLoading(ImageViewer.this::postInvalidate);
-            if(imgCenter.path == null) return ref;
-            String[] a = imgCenter.path.getFileName().toString().split("\\.")[0].split("_");
-            Log.d(TAG, "getNextImage: " + a[0] + " " + a[1]);
-            executor.execute(() -> {
-                try {
-                    JSONObject postInfo = instaClient.getPostInfo(a[0]);
-                    Path path = Paths.get(InstaClient.imagePath,instaClient.getImageInPost(postInfo, instaClient.getImageAtIndexInPost(postInfo,-1)));
-                    Log.d(TAG, "getNextImage: " + path);
-                    ref.stopLoading();
-                    ref.changeImage(path, getWidth(), getHeight());
-                    postInvalidate();
-                } catch (Exception e) {
-                    Log.e(TAG, "getNextImage: " + Log.getStackTraceString(e));
-                }
-            });
-            return ref;
+            if (currentPostInfo == null || currentImageIndex >= instaClient.numberOfImagesInPost(currentPostInfo) - 1)
+                return null;
+            currentImageIndex++;
+            return getImageAtIndexInCurrentPost(currentImageIndex + 1);
         }
 
         @Override
         public CJImage getPrevImage() {
-            return getNextImage();
+            if (currentImageIndex <= 0)
+                return null;
+            currentImageIndex--;
+            return getImageAtIndexInCurrentPost(currentImageIndex - 1);
         }
     };
 
@@ -104,24 +124,6 @@ public class ImageViewer extends View {
         }
     }
 
-    public void getRandomImageBottom() {
-        imgBottom = bottomImageProvider.getNextImage();
-        imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
-        imgBottom.transform.opacity = 0;
-    }
-
-    public void getRandomImageLeft() {
-        imgLeft = sideImageProvider.getPrevImage();
-        imgLeft.transform.translateX = -this.getWidth();
-        imgLeft.transform.opacity = 0;
-    }
-
-    public void getRandomImageRight() {
-        imgRight = sideImageProvider.getNextImage();
-        imgRight.transform.translateX = this.getWidth();
-        imgRight.transform.opacity = 0;
-    }
-
     public CJImage.Transform rightTransform() {
         CJImage.Transform rt = new CJImage.Transform();
         rt.translateX = this.getWidth();
@@ -143,11 +145,32 @@ public class ImageViewer extends View {
         return bt;
     }
 
+    public void setPostByPath(Path p) {
+        imgLeft = null;
+        imgRight = null;
+        if (singleTask != null && !singleTask.isCancelled()) singleTask.cancel(true);
+        if (p == null) return;
+        singleTask = singleExecutor.schedule(() -> {
+            try {
+                String a[] = p.getFileName().toString().split("\\.")[0].split("_");
+                currentPostInfo = instaClient.getPostInfo(a[0]);
+                currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, a[1]);
+                imgLeft = getImageAtIndexInCurrentPost(currentImageIndex - 1);
+                imgRight = getImageAtIndexInCurrentPost(currentImageIndex + 1);
+                if (imgLeft != null) imgLeft.transform.target = leftTransform();
+                if (imgRight != null) imgRight.transform.target = rightTransform();
+            } catch (Exception ex) {
+                Log.e(TAG, "setPostByPath: " + p.getFileName() + " " + Log.getStackTraceString(ex));
+            }
+        }, 500, TimeUnit.MILLISECONDS);
+    }
+
     public void loadImage(Path p) {
+        setPostByPath(p);
         imgCenter = new CJImage(p, getWidth(), getHeight());
-        getRandomImageBottom();
-        getRandomImageLeft();
-        getRandomImageRight();
+        imgBottom = bottomImageProvider.getNextImage();
+        imgLeft = null;
+        imgRight = null;
 
         this.invalidate();
     }
@@ -165,8 +188,8 @@ public class ImageViewer extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawBitmap(background, 0, 0, paint);
-        imgLeft.drawOnCanvas(canvas, paint);
-        imgRight.drawOnCanvas(canvas, paint);
+        if (imgLeft != null) imgLeft.drawOnCanvas(canvas, paint);
+        if (imgRight != null) imgRight.drawOnCanvas(canvas, paint);
         imgBottom.drawOnCanvas(canvas, paint);
         imgCenter.drawOnCanvas(canvas, paint);
     }
@@ -179,7 +202,7 @@ public class ImageViewer extends View {
     private float startX = 0, startY = 0;
     // 0 = undecided, 1 = x, 2 = y
     private int slideDirection = 0;
-    private final float slideThreshold = 10, slideSwitchDistance = 500, slideSwitchVelocity = 1.75f;
+    private final float slideThreshold = 10, slideSwitchDistance = 500, slideSwitchVelocity = 1.5f;
     long slideStartTime = 0;
 
     @Override
@@ -200,10 +223,10 @@ public class ImageViewer extends View {
                 if (slideDirection == 1) {
                     imgCenter.transform.translateX = delX;
                     imgCenter.transform.opacity = 1 - Math.abs(delX / this.getWidth());
-                    if (delX < 0) {
+                    if (imgRight != null && delX < 0) {
                         imgRight.transform.translateX = this.getWidth() + delX;
                         imgRight.transform.opacity = Math.abs(delX / this.getWidth());
-                    } else {
+                    } else if (imgLeft != null) {
                         imgLeft.transform.translateX = -this.getWidth() + delX;
                         imgLeft.transform.opacity = Math.abs(delX / this.getWidth());
                     }
@@ -255,26 +278,28 @@ public class ImageViewer extends View {
                     if (delY < -slideSwitchDistance || vel > slideSwitchVelocity) {
                         imgCenter.destroy();
                         imgCenter = imgBottom;
-                        getRandomImageBottom();
+                        imgBottom = bottomImageProvider.getNextImage();
+                        setPostByPath(imgCenter.path);
                     }
                 } else if (slideDirection == 1) {
                     float vel = Math.abs(delX) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
-                    if (delX > slideSwitchDistance || (delX > 0 && vel > slideSwitchVelocity)) {
-                        imgCenter.destroy();
+                    if (imgLeft != null && (delX > slideSwitchDistance || (delX > 0 && vel > slideSwitchVelocity))) {
+                        if (imgRight != null) imgRight.destroy();
+                        imgRight = imgCenter;
                         imgCenter = imgLeft;
-                        getRandomImageLeft();
-                    } else if (delX < -slideSwitchDistance || (delX < 0 && vel > slideSwitchVelocity)) {
-                        imgCenter.destroy();
+                        imgLeft = sideImageProvider.getPrevImage();
+                    } else if (imgRight != null && (delX < -slideSwitchDistance || (delX < 0 && vel > slideSwitchVelocity))) {
+                        if (imgLeft != null) imgLeft.destroy();
+                        imgLeft = imgCenter;
                         imgCenter = imgRight;
-                        getRandomImageRight();
+                        imgRight = sideImageProvider.getNextImage();
                     }
                 }
             }
-
             imgCenter.transform.target = new CJImage.Transform();
 
-            imgRight.transform.target = rightTransform();
-            imgLeft.transform.target = leftTransform();
+            if (imgRight != null) imgRight.transform.target = rightTransform();
+            if (imgLeft != null) imgLeft.transform.target = leftTransform();
             imgBottom.transform.target = bottomTransform();
             invalidate();
             restore();
@@ -296,12 +321,14 @@ public class ImageViewer extends View {
             try {
                 for (; ; ) {
                     imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-                    imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-                    imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    if (imgRight != null)
+                        imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                    if (imgLeft != null)
+                        imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                     imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
 
 
-                    if (imgCenter.transform.distanceToTarget() < ZERO && imgRight.transform.distanceToTarget() < ZERO && imgLeft.transform.distanceToTarget() < ZERO && imgBottom.transform.distanceToTarget() < ZERO)
+                    if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
                         break;
                     lastUpdate = System.currentTimeMillis();
                     postInvalidate();

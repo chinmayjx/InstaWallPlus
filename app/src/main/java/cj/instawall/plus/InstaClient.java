@@ -84,6 +84,21 @@ public class InstaClient {
         public static String postCode(JSONObject postInfo) throws JSONException {
             return postInfo.getJSONArray("items").getJSONObject(0).getString("code");
         }
+        public static int imageIndexInPost(JSONObject postInfo, String imageID){
+            try {
+                JSONArray cm = carouselMedia(postInfo);
+                for (int i = 0; i < cm.length(); i++) {
+                    JSONObject c = cm.getJSONObject(i);
+                    String id = c.optString("pk");
+                    if (imageID.equals(id)) {
+                        return i;
+                    }
+                }
+            } catch (JSONException e) {
+                return 0;
+            }
+            return -1;
+        }
     }
 
     static class SavedItem {
