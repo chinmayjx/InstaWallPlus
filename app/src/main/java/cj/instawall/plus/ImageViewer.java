@@ -23,6 +23,63 @@ public class ImageViewer extends View {
     Paint paint = new Paint();
     Bitmap background;
     InstaClient instaClient;
+    CJImageProvider bottomImageProvider = new CJImageProvider() {
+        @Override
+        public CJImage getNextImage() {
+            CJImage ref = imageFromBitmap(background);
+            ref.startLoading(ImageViewer.this::postInvalidate);
+            instaClient.act_getRandomImageAsync((path) -> {
+                ref.stopLoading();
+                ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), getWidth(), getHeight());
+                postInvalidate();
+            });
+            return ref;
+        }
+
+        @Override
+        public CJImage getPrevImage() {
+            return getNextImage();
+        }
+
+        @Override
+        public boolean hasNextImage() {
+            return true;
+        }
+
+        @Override
+        public boolean hasPrevImage() {
+            return true;
+        }
+    };
+
+    CJImageProvider sideImageProvider = new CJImageProvider() {
+        @Override
+        public CJImage getNextImage() {
+            CJImage ref = imageFromBitmap(background);
+            ref.startLoading(ImageViewer.this::postInvalidate);
+            instaClient.act_getRandomImageAsync((path) -> {
+                ref.stopLoading();
+                ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), getWidth(), getHeight());
+                postInvalidate();
+            });
+            return ref;
+        }
+
+        @Override
+        public CJImage getPrevImage() {
+            return getNextImage();
+        }
+
+        @Override
+        public boolean hasNextImage() {
+            return true;
+        }
+
+        @Override
+        public boolean hasPrevImage() {
+            return true;
+        }
+    };
 
 
     public ImageViewer(Context context) {
@@ -59,42 +116,21 @@ public class ImageViewer extends View {
     }
 
     public void getRandomImageBottom() {
-        imgBottom = imageFromBitmap(background);
+        imgBottom = bottomImageProvider.getNextImage();
         imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
         imgBottom.transform.opacity = 0;
-        CJImage ref = imgBottom;
-        ref.startLoading(this::postInvalidate);
-        instaClient.act_getRandomImageAsync((path) -> {
-            ref.stopLoading();
-            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
-            postInvalidate();
-        });
     }
 
     public void getRandomImageLeft() {
-        imgLeft = imageFromBitmap(background);
+        imgLeft = sideImageProvider.getPrevImage();
         imgLeft.transform.translateX = -this.getWidth();
         imgLeft.transform.opacity = 0;
-        CJImage ref = imgLeft;
-        ref.startLoading(this::postInvalidate);
-        instaClient.act_getRandomImageAsync((path) -> {
-            ref.stopLoading();
-            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
-            postInvalidate();
-        });
     }
 
     public void getRandomImageRight() {
-        imgRight = imageFromBitmap(background);
+        imgRight = sideImageProvider.getNextImage();
         imgRight.transform.translateX = this.getWidth();
         imgRight.transform.opacity = 0;
-        CJImage ref = imgRight;
-        ref.startLoading(this::postInvalidate);
-        instaClient.act_getRandomImageAsync((path) -> {
-            ref.stopLoading();
-            ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), this.getWidth(), this.getHeight());
-            postInvalidate();
-        });
     }
 
     public CJImage.Transform rightTransform() {
