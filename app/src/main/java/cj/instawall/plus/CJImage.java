@@ -114,9 +114,10 @@ public class CJImage {
 
     Thread loadThread;
     boolean loading = true;
-    int loadSide = 300, loadN = 10;
+    int loadSide = 200, loadN = 20;
 
     public void startLoading(Runnable invalidate) {
+        if (loadThread != null) loadThread.interrupt();
         loadThread = new Thread(() -> {
             try {
                 int tlx = bitmap.getWidth() / 2 - loadSide / 2;
@@ -125,7 +126,7 @@ public class CJImage {
                 for (; ; ) {
                     for (int i = tly; i < tly + loadSide; i += ss) {
                         for (int j = tlx; j < tlx + loadSide; j += ss) {
-                            int clr = Math.random() < 0.5 ? 0 : -1;
+                            int clr = Math.random() < 0.65 ? 0 : -1;
                             for (int ii = 0; ii < ss; ii++) {
                                 for (int jj = 0; jj < ss; jj++) {
                                     if (!loading) return;
@@ -146,5 +147,10 @@ public class CJImage {
 
     public void stopLoading() {
         loading = false;
+    }
+
+    public void destroy() {
+        loading = false;
+        if (loadThread != null) loadThread.interrupt();
     }
 }

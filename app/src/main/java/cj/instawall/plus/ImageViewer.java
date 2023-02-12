@@ -15,14 +15,23 @@ import android.view.View;
 
 import androidx.annotation.Nullable;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
     CJImage imgCenter, imgRight, imgLeft, imgBottom;
     Paint paint = new Paint();
     Bitmap background;
+    ExecutorService executor = Executors.newCachedThreadPool();
     InstaClient instaClient;
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
@@ -48,10 +57,20 @@ public class ImageViewer extends View {
         public CJImage getNextImage() {
             CJImage ref = new CJImage(background, getWidth(), getHeight());
             ref.startLoading(ImageViewer.this::postInvalidate);
-            instaClient.act_getRandomImageAsync((path) -> {
-                ref.stopLoading();
-                ref.changeBitmap(BitmapFactory.decodeFile(path.toString()), getWidth(), getHeight());
-                postInvalidate();
+            if(imgCenter.path == null) return ref;
+            String[] a = imgCenter.path.getFileName().toString().split("\\.")[0].split("_");
+            Log.d(TAG, "getNextImage: " + a[0] + " " + a[1]);
+            executor.execute(() -> {
+                try {
+                    JSONObject postInfo = instaClient.getPostInfo(a[0]);
+                    Path path = Paths.get(InstaClient.imagePath,instaClient.getImageInPost(postInfo, instaClient.getImageAtIndexInPost(postInfo,-1)));
+                    Log.d(TAG, "getNextImage: " + path);
+                    ref.stopLoading();
+                    ref.changeImage(path, getWidth(), getHeight());
+                    postInvalidate();
+                } catch (Exception e) {
+                    Log.e(TAG, "getNextImage: " + Log.getStackTraceString(e));
+                }
             });
             return ref;
         }
@@ -234,15 +253,18 @@ public class ImageViewer extends View {
                 if (slideDirection == 2) {
                     float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (delY < -slideSwitchDistance || vel > slideSwitchVelocity) {
+                        imgCenter.destroy();
                         imgCenter = imgBottom;
                         getRandomImageBottom();
                     }
                 } else if (slideDirection == 1) {
                     float vel = Math.abs(delX) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (delX > slideSwitchDistance || (delX > 0 && vel > slideSwitchVelocity)) {
+                        imgCenter.destroy();
                         imgCenter = imgLeft;
                         getRandomImageLeft();
                     } else if (delX < -slideSwitchDistance || (delX < 0 && vel > slideSwitchVelocity)) {
+                        imgCenter.destroy();
                         imgCenter = imgRight;
                         getRandomImageRight();
                     }

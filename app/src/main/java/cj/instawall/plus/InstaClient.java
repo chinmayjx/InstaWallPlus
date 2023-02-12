@@ -567,7 +567,7 @@ public class InstaClient {
         Log.d(TAG, "fetching " + postId + " from IG");
         HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
         JSONObject res = getJSONResponse(con);
-        Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"));
+        Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"), StandardCopyOption.REPLACE_EXISTING);
         return res;
     }
 
