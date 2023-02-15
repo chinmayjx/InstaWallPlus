@@ -45,6 +45,7 @@ public class ImageViewer extends View {
     int currentImageIndex = 0;
     int nImagesInPost = 0;
     Stack<CJImage> history = new Stack<>();
+    Stack<CJImage> future = new Stack<>();
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
@@ -328,13 +329,16 @@ public class ImageViewer extends View {
                     float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (delY < -slideSwitchDistance || (delY < 0 && vel > slideSwitchVelocity)) {
                         history.push(imgCenter);
-                        imgCenter.destroy();
-                        imgCenter = imgBottom;
-                        imgBottom = bottomImageProvider.getNextImage();
+//                        imgCenter.destroy();
+                        if (future.isEmpty()) {
+                            imgCenter = imgBottom;
+                            imgBottom = bottomImageProvider.getNextImage();
+                        } else imgCenter = future.pop();
                         setPostByPath(imgCenter.path);
                     } else if (delY > slideSwitchDistance || (delY > 0 && vel > slideSwitchVelocity)) {
                         if (!history.isEmpty()) {
-                            imgCenter.destroy();
+                            future.push(imgCenter);
+//                            imgCenter.destroy();
                             imgCenter = bottomImageProvider.getPrevImage();
                             setPostByPath(imgCenter.path);
                         }
@@ -342,12 +346,12 @@ public class ImageViewer extends View {
                 } else if (slideDirection == 1) {
                     float vel = Math.abs(delX) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (imgLeft != null && (delX > slideSwitchDistance || (delX > 0 && vel > slideSwitchVelocity))) {
-                        if (imgRight != null) imgRight.destroy();
+//                        if (imgRight != null) imgRight.destroy();
                         imgRight = imgCenter;
                         imgCenter = imgLeft;
                         imgLeft = sideImageProvider.getPrevImage();
                     } else if (imgRight != null && (delX < -slideSwitchDistance || (delX < 0 && vel > slideSwitchVelocity))) {
-                        if (imgLeft != null) imgLeft.destroy();
+//                        if (imgLeft != null) imgLeft.destroy();
                         imgLeft = imgCenter;
                         imgCenter = imgRight;
                         imgRight = sideImageProvider.getNextImage();
