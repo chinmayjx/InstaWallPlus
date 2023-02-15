@@ -84,7 +84,8 @@ public class InstaClient {
         public static String postCode(JSONObject postInfo) throws JSONException {
             return postInfo.getJSONArray("items").getJSONObject(0).getString("code");
         }
-        public static int imageIndexInPost(JSONObject postInfo, String imageID){
+
+        public static int imageIndexInPost(JSONObject postInfo, String imageID) {
             try {
                 JSONArray cm = carouselMedia(postInfo);
                 for (int i = 0; i < cm.length(); i++) {
@@ -574,6 +575,17 @@ public class InstaClient {
     }
 
     // get data from instagram -----------------------------------
+    JSONObject postInfoFromCache(String postId) {
+        try {
+            if (Files.exists(Paths.get(metaPath, postId + ".json"))) {
+                return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "postInfoFromCache: " + Log.getStackTraceString(e));
+        }
+        return null;
+    }
+
     JSONObject getPostInfo(String postId) throws IOException, JSONException {
         if (Files.exists(Paths.get(metaPath, postId + ".json"))) {
             Log.d(TAG, "found " + postId + " info locally");

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.os.Handler;
@@ -41,6 +42,7 @@ public class ImageViewer extends View {
     InstaClient instaClient;
     JSONObject currentPostInfo = null;
     int currentImageIndex = 0;
+    int nImagesInPost = 0;
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
@@ -124,7 +126,7 @@ public class ImageViewer extends View {
         }
     }
 
-    public CJImage.Transform rightTransform() {
+    CJImage.Transform rightTransform() {
         CJImage.Transform rt = new CJImage.Transform();
         rt.translateX = this.getWidth();
         rt.opacity = 0;
@@ -145,24 +147,36 @@ public class ImageViewer extends View {
         return bt;
     }
 
+    void loadPostInfo(String postID) {
+        currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, postID);
+        nImagesInPost = currentPostInfo == null ? 0 : instaClient.numberOfImagesInPost(currentPostInfo);
+        imgLeft = getImageAtIndexInCurrentPost(currentImageIndex - 1);
+        imgRight = getImageAtIndexInCurrentPost(currentImageIndex + 1);
+        if (imgLeft != null) imgLeft.transform.target = leftTransform();
+        if (imgRight != null) imgRight.transform.target = rightTransform();
+        postInvalidate();
+    }
+
     public void setPostByPath(Path p) {
         imgLeft = null;
         imgRight = null;
+        nImagesInPost = 0;
+        currentImageIndex = 0;
+        invalidate();
         if (singleTask != null && !singleTask.isCancelled()) singleTask.cancel(true);
         if (p == null) return;
-        singleTask = singleExecutor.schedule(() -> {
-            try {
-                String a[] = p.getFileName().toString().split("\\.")[0].split("_");
-                currentPostInfo = instaClient.getPostInfo(a[0]);
-                currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, a[1]);
-                imgLeft = getImageAtIndexInCurrentPost(currentImageIndex - 1);
-                imgRight = getImageAtIndexInCurrentPost(currentImageIndex + 1);
-                if (imgLeft != null) imgLeft.transform.target = leftTransform();
-                if (imgRight != null) imgRight.transform.target = rightTransform();
-            } catch (Exception ex) {
-                Log.e(TAG, "setPostByPath: " + p.getFileName() + " " + Log.getStackTraceString(ex));
-            }
-        }, 500, TimeUnit.MILLISECONDS);
+        String[] a = p.getFileName().toString().split("\\.")[0].split("_");
+        currentPostInfo = instaClient.postInfoFromCache(a[0]);
+        if (currentPostInfo == null) {
+            singleTask = singleExecutor.schedule(() -> {
+                try {
+                    if (currentPostInfo == null) currentPostInfo = instaClient.getPostInfo(a[0]);
+                    loadPostInfo(a[1]);
+                } catch (Exception ex) {
+                    Log.e(TAG, "setPostByPath: " + p.getFileName() + " " + Log.getStackTraceString(ex));
+                }
+            }, 500, TimeUnit.MILLISECONDS);
+        } else loadPostInfo(a[1]);
     }
 
     public void loadImage(Path p) {
@@ -184,6 +198,33 @@ public class ImageViewer extends View {
         background = Bitmap.createBitmap(clr, w, h, Bitmap.Config.ARGB_8888);
     }
 
+    Paint dotPaint = new Paint();
+    float dotOpacity = 1;
+
+    void drawDots(Canvas canvas) {
+        dotPaint.setColor(Color.WHITE);
+        dotPaint.setAlpha((int) (dotOpacity * 255));
+        float r = 20;
+        int nd = nImagesInPost;
+        if (nd == 0) return;
+        float dotGap = 20;
+        canvas.save();
+        canvas.translate((int) ((getWidth() - (2 * r * nd - 2 * r + (nd - 1) * dotGap)) / 2), 0);
+        for (int i = 0; i < nd; i++) {
+            float cx = i * r * 2 + i * dotGap;
+            float cy = getHeight() - 2 * r - 10;
+            if (currentImageIndex == i) {
+                canvas.drawCircle(cx, cy, r, dotPaint);
+                dotPaint.setColor(Color.BLACK);
+                canvas.drawCircle(cx, cy, r / 2, dotPaint);
+                dotPaint.setColor(Color.WHITE);
+                dotPaint.setAlpha((int) (dotOpacity * 255));
+            } else canvas.drawCircle(cx, cy, r / 2, dotPaint);
+        }
+        dotPaint.setAlpha(255);
+        canvas.restore();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -192,6 +233,7 @@ public class ImageViewer extends View {
         if (imgRight != null) imgRight.drawOnCanvas(canvas, paint);
         imgBottom.drawOnCanvas(canvas, paint);
         imgCenter.drawOnCanvas(canvas, paint);
+        drawDots(canvas);
     }
 
     private boolean scaling = false;
@@ -208,6 +250,12 @@ public class ImageViewer extends View {
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (e.getPointerCount() == 1) {
+            if (scaling) {
+                scaling = false;
+                startX = e.getX();
+                startY = e.getY();
+                slideStartTime = System.currentTimeMillis();
+            }
             if (!sliding) {
                 startX = e.getX();
                 startY = e.getY();
@@ -334,6 +382,7 @@ public class ImageViewer extends View {
                     postInvalidate();
                     Thread.sleep(1000 / frequency);
                 }
+                restoreThread = null;
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

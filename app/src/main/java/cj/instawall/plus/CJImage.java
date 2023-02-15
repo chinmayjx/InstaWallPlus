@@ -38,6 +38,13 @@ public class CJImage {
             opacity += (target.opacity - opacity) * len;
         }
 
+        public void reset() {
+            rotation = 0;
+            scaleFactor = 1;
+            translateY = 0;
+            translateX = 0;
+        }
+
         public float distanceToTarget() {
             return (float) Math.sqrt(
                     (rotation - target.rotation) * (rotation - target.rotation)
