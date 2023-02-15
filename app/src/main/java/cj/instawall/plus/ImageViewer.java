@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Stack;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -43,6 +44,7 @@ public class ImageViewer extends View {
     JSONObject currentPostInfo = null;
     int currentImageIndex = 0;
     int nImagesInPost = 0;
+    Stack<CJImage> history = new Stack<>();
     CJImageProvider bottomImageProvider = new CJImageProvider() {
         @Override
         public CJImage getNextImage() {
@@ -60,7 +62,8 @@ public class ImageViewer extends View {
 
         @Override
         public CJImage getPrevImage() {
-            return getNextImage();
+            if (history.isEmpty()) return null;
+            return history.pop();
         }
     };
 
@@ -323,11 +326,18 @@ public class ImageViewer extends View {
                 float delY = e.getY() - startY;
                 if (slideDirection == 2) {
                     float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
-                    if (delY < -slideSwitchDistance || vel > slideSwitchVelocity) {
+                    if (delY < -slideSwitchDistance || (delY < 0 && vel > slideSwitchVelocity)) {
+                        history.push(imgCenter);
                         imgCenter.destroy();
                         imgCenter = imgBottom;
                         imgBottom = bottomImageProvider.getNextImage();
                         setPostByPath(imgCenter.path);
+                    } else if (delY > slideSwitchDistance || (delY > 0 && vel > slideSwitchVelocity)) {
+                        if (!history.isEmpty()) {
+                            imgCenter.destroy();
+                            imgCenter = bottomImageProvider.getPrevImage();
+                            setPostByPath(imgCenter.path);
+                        }
                     }
                 } else if (slideDirection == 1) {
                     float vel = Math.abs(delX) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
