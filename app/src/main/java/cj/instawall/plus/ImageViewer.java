@@ -184,11 +184,11 @@ public class ImageViewer extends View {
     }
 
     public void loadImage(Path p) {
-        setPostByPath(p);
         imgCenter = new CJImage(p, getWidth(), getHeight());
         imgBottom = bottomImageProvider.getNextImage();
         imgLeft = null;
         imgRight = null;
+        setPostByPath(p);
 
         this.invalidate();
     }
@@ -198,34 +198,30 @@ public class ImageViewer extends View {
         super.onSizeChanged(w, h, oldw, oldh);
         if (w == 0 || h == 0) return;
         int clr[] = new int[h * w];
+        dotY = h - 2 * dotRadius - 10;
         Arrays.fill(clr, -1 << 24);
         background = Bitmap.createBitmap(clr, w, h, Bitmap.Config.ARGB_8888);
     }
 
     Paint dotPaint = new Paint();
-    float dotOpacity = 1;
+    float dotGap = 20, dotRadius = 20, dotY;
 
     void drawDots(Canvas canvas) {
         dotPaint.setColor(Color.WHITE);
-        dotPaint.setAlpha((int) (dotOpacity * 255));
-        float r = 20;
+        float r = dotRadius;
         int nd = nImagesInPost;
         if (nd == 0) return;
-        float dotGap = 20;
         canvas.save();
         canvas.translate((int) ((getWidth() - (2 * r * nd - 2 * r + (nd - 1) * dotGap)) / 2), 0);
         for (int i = 0; i < nd; i++) {
             float cx = i * r * 2 + i * dotGap;
-            float cy = getHeight() - 2 * r - 10;
             if (currentImageIndex == i) {
-                canvas.drawCircle(cx, cy, r, dotPaint);
+                canvas.drawCircle(cx, dotY, r, dotPaint);
                 dotPaint.setColor(Color.BLACK);
-                canvas.drawCircle(cx, cy, r / 2, dotPaint);
+                canvas.drawCircle(cx, dotY, r / 2, dotPaint);
                 dotPaint.setColor(Color.WHITE);
-                dotPaint.setAlpha((int) (dotOpacity * 255));
-            } else canvas.drawCircle(cx, cy, r / 2, dotPaint);
+            } else canvas.drawCircle(cx, dotY, r / 2, dotPaint);
         }
-        dotPaint.setAlpha(255);
         canvas.restore();
     }
 
@@ -321,6 +317,19 @@ public class ImageViewer extends View {
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
             lastUpdate = System.currentTimeMillis();
+            float dotYSpan = 1.5f;
+            if ((e.getY() < dotY + dotRadius * dotYSpan && e.getY() > dotY - dotRadius * dotYSpan)) {
+                float dbw = nImagesInPost * dotRadius * 2 + dotGap * (nImagesInPost - 1);
+                float fr = ((e.getX() - ((getWidth() - dbw) / 2)) / dbw);
+                if (fr > 0 && fr < 1) {
+                    try {
+                        Path pth = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, (int) (fr * nImagesInPost))));
+                        loadImage(pth);
+                    } catch (Exception ex) {
+                        Log.e(TAG, "onTouchEvent: " + Log.getStackTraceString(ex));
+                    }
+                }
+            }
 
             if (!scaling && sliding) {
                 float delX = e.getX() - startX;
