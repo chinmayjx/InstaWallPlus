@@ -68,6 +68,8 @@ public class ImageViewer extends View {
         }
     };
 
+    public static boolean simulateLoading = false;
+    int SIMULATE_LOAD_TIME = 2000;
     CJImage getImageAtIndexInCurrentPost(int ix) {
         if (currentPostInfo == null || ix < 0 || ix > instaClient.numberOfImagesInPost(currentPostInfo) - 1)
             return null;
@@ -77,6 +79,7 @@ public class ImageViewer extends View {
         ref.startLoading(ImageViewer.this::postInvalidate);
         executor.execute(() -> {
             try {
+                if(simulateLoading) Thread.sleep(SIMULATE_LOAD_TIME);
                 Path pt = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, ix)));
                 ref.stopLoading();
                 ref.changeImage(pt, getWidth(), getHeight());
