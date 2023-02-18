@@ -66,8 +66,7 @@ public class ViewActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Here's a Snackbar", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                
             }
         });
 
@@ -241,7 +240,7 @@ public class ViewActivity extends AppCompatActivity {
     ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
-            Log.d(TAG, "MainActivity connected to MainService");
+            Log.d(TAG, "ViewActivity connected to MainService");
             MainService.MainBinder binder = (MainService.MainBinder) iBinder;
             mainService = binder.getService();
             onCreateTest();
@@ -252,7 +251,7 @@ public class ViewActivity extends AppCompatActivity {
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-            Log.d(TAG, "MainActivity disconnected from MainService");
+            Log.d(TAG, "ViewActivity disconnected from MainService");
         }
     };
 
@@ -263,9 +262,9 @@ public class ViewActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (wv != null && wv.getVisibility() == View.VISIBLE) {
+        if (wv != null && wvHolder.getVisibility() == View.VISIBLE) {
             if (wv.canGoBack()) wv.goBack();
-            else wv.setVisibility(View.INVISIBLE);
+            else wvHolder.setVisibility(View.INVISIBLE);
         } else if (rvAdapter.selected.size() > 0) {
             rvAdapter.clearSelection();
         } else if (imageViewer.getVisibility() == View.VISIBLE) {

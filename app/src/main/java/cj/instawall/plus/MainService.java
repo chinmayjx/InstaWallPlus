@@ -26,7 +26,7 @@ public class MainService extends Service {
         String CHANNEL_ID = "my_channel_01";
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
                 "Channel human readable title",
-                NotificationManager.IMPORTANCE_DEFAULT);
+                NotificationManager.IMPORTANCE_LOW);
 
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
 
