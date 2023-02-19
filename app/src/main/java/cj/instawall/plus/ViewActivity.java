@@ -43,7 +43,6 @@ public class ViewActivity extends AppCompatActivity {
     FloatingActionButton fab;
     int displayWidth;
 
-    String[] menu = new String[]{"჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻", "", "Instagram.com", "Sync", "Continue Failed Sync", "Random Wallpaper", "Start REST Server", "Test", "New Login", "MainActivity", ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading"};
     ArrayAdapter<String> menuAdapter;
     MainService mainService;
     String interceptor;
@@ -128,6 +127,7 @@ public class ViewActivity extends AppCompatActivity {
         });
     }
 
+    String[] menu = new String[]{"჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻", "", "Instagram.com", "Sync", "Continue Failed Sync", "Random Wallpaper", "Start REST Server", "Test", "New Login", "MainActivity", ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading"};
     void setupMenu(){
         menuAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, menu);
         drawerLV.setAdapter(menuAdapter);
@@ -146,16 +146,16 @@ public class ViewActivity extends AppCompatActivity {
                         wv.login();
                         break;
                     case 3:
-                        mainService.instaClient.act_getSavedPosts();
+                        instaClient.act_getSavedPosts();
                         break;
                     case 4:
-                        mainService.instaClient.act_continueLastSync();
+                        instaClient.act_continueLastSync();
                         break;
                     case 5:
-                        mainService.instaClient.act_setRandomWallpaper();
+                        instaClient.act_setRandomWallpaper();
                         break;
                     case 6:
-                        new RESTServer(mainService.instaClient).startListening();
+                        new RESTServer(instaClient).startListening();
                         break;
                     case 7:
                         break;
