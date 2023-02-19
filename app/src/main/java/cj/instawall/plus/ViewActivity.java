@@ -40,7 +40,38 @@ public class ViewActivity extends AppCompatActivity {
     ImageViewer imageViewer;
     DrawerLayout drawerLayout;
     ListView drawerLV;
+    FloatingActionButton fab;
     int displayWidth;
+
+    String[] menu = new String[]{"჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻", "", "Instagram.com", "Sync", "Continue Failed Sync", "Random Wallpaper", "Start REST Server", "Test", "New Login", "MainActivity", ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading"};
+    ArrayAdapter<String> menuAdapter;
+    MainService mainService;
+    String interceptor;
+    BiometricAuth biometricAuth;
+    Handler handler;
+    FrameLayout wvHolder;
+    InstaWebView wv;
+    SharedPreferences sharedPreferences;
+    SharedPreferences.Editor spEditor;
+
+    void initializeViews(){
+        readScripts();
+        
+        imageViewer = findViewById(R.id.imgViewer);
+        drawerLayout = findViewById(R.id.drawer_layout);
+        drawerLV = findViewById(R.id.nav_drawer);
+        fab = findViewById(R.id.grid_fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+            }
+        });
+
+        wvHolder = findViewById(R.id.wvHolder);
+        wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
+        wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,17 +86,7 @@ public class ViewActivity extends AppCompatActivity {
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
 
         displayWidth = displayMetrics.widthPixels;
-        imageViewer = findViewById(R.id.imgViewer);
-        drawerLayout = findViewById(R.id.drawer_layout);
-        drawerLV = findViewById(R.id.nav_drawer);
-        FloatingActionButton fab = findViewById(R.id.grid_fab);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-            }
-        });
-
+        initializeViews();
 
         if (getSupportActionBar() != null) getSupportActionBar().hide();
         rv = findViewById(R.id.recycler_grid);
@@ -167,12 +188,9 @@ public class ViewActivity extends AppCompatActivity {
         // From MainActivity --------
 
         bindService(new Intent(this, MainService.class), serviceConnection, Context.BIND_AUTO_CREATE);
-        readScripts();
 
         sharedPreferences = getSharedPreferences(GLOBAL_SHARED_PREF, MODE_PRIVATE);
         spEditor = sharedPreferences.edit();
-
-        initializeUI();
 
         handler = new Handler(Looper.getMainLooper());
         biometricAuth = new BiometricAuth(this, () -> {
@@ -197,23 +215,6 @@ public class ViewActivity extends AppCompatActivity {
 
     }
 
-    String[] menu = new String[]{"჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻", "", "Instagram.com", "Sync", "Continue Failed Sync", "Random Wallpaper", "Start REST Server", "Test", "New Login", "MainActivity", ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading"};
-    ArrayAdapter<String> menuAdapter;
-    MainService mainService;
-    String interceptor;
-    BiometricAuth biometricAuth;
-    Handler handler;
-    FrameLayout wvHolder;
-    InstaWebView wv;
-    SharedPreferences sharedPreferences;
-    SharedPreferences.Editor spEditor;
-
-    void initializeUI() {
-        wvHolder = findViewById(R.id.wvHolder);
-        wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
-        wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
     void readScripts() {
         try {
             Scanner s = new Scanner(getAssets().open("Interceptor.js")).useDelimiter("\\A");
@@ -224,21 +225,12 @@ public class ViewActivity extends AppCompatActivity {
         }
     }
 
-    void onCreateTest() {
-        try {
-            mainService.instaClient.act_test();
-        } catch (Exception e) {
-            Log.e(TAG, "onCreateTest: failed, " + Log.getStackTraceString(e));
-        }
-    }
-
     ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             Log.d(TAG, "ViewActivity connected to MainService");
             MainService.MainBinder binder = (MainService.MainBinder) iBinder;
             mainService = binder.getService();
-            onCreateTest();
 
             menu[1] = InstaClient.username;
             menuAdapter.notifyDataSetChanged();
