@@ -56,11 +56,18 @@ public class ViewActivity extends AppCompatActivity {
 
     void initializeViews(){
         readScripts();
-        
+
+        if (getSupportActionBar() != null) getSupportActionBar().hide();
+
         imageViewer = findViewById(R.id.imgViewer);
         drawerLayout = findViewById(R.id.drawer_layout);
         drawerLV = findViewById(R.id.nav_drawer);
         fab = findViewById(R.id.grid_fab);
+        rv = findViewById(R.id.recycler_grid);
+        wvHolder = findViewById(R.id.wvHolder);
+        gridDataset = findViewById(R.id.grid_dataset);
+        gridAction = findViewById(R.id.grid_action);
+
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -68,28 +75,14 @@ public class ViewActivity extends AppCompatActivity {
             }
         });
 
-        wvHolder = findViewById(R.id.wvHolder);
         wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
         wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_view);
-        try {
-            instaClient = InstaClient.getInstance(this);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    void setupRVAdapter(){
         DisplayMetrics displayMetrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-
         displayWidth = displayMetrics.widthPixels;
-        initializeViews();
-
-        if (getSupportActionBar() != null) getSupportActionBar().hide();
-        rv = findViewById(R.id.recycler_grid);
         rvAdapter = new RVAdapter(instaClient, this);
 
         rvAdapter.onEnterSelected = () -> fab.setVisibility(View.VISIBLE);
@@ -97,9 +90,9 @@ public class ViewActivity extends AppCompatActivity {
 
         rv.setAdapter(rvAdapter);
         rv.setLayoutManager(new GridLayoutManager(this, displayWidth / 500));
+    }
 
-        gridDataset = findViewById(R.id.grid_dataset);
-        gridAction = findViewById(R.id.grid_action);
+    void setupSpinners(){
         ArrayAdapter<RVAdapter.Dataset> datasetAdapter = new ArrayAdapter<RVAdapter.Dataset>(this, android.R.layout.simple_spinner_item, RVAdapter.Dataset.values());
         datasetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         gridDataset.setAdapter(datasetAdapter);
@@ -133,7 +126,9 @@ public class ViewActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> adapterView) {
             }
         });
+    }
 
+    void setupMenu(){
         menuAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, menu);
         drawerLV.setAdapter(menuAdapter);
         drawerLV.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -184,22 +179,15 @@ public class ViewActivity extends AppCompatActivity {
                 }
             }
         });
+    }
 
-        // From MainActivity --------
-
-        bindService(new Intent(this, MainService.class), serviceConnection, Context.BIND_AUTO_CREATE);
-
-        sharedPreferences = getSharedPreferences(GLOBAL_SHARED_PREF, MODE_PRIVATE);
-        spEditor = sharedPreferences.edit();
-
-        handler = new Handler(Looper.getMainLooper());
+    void setupBiometric(){
         biometricAuth = new BiometricAuth(this, () -> {
             CookieManager.getInstance().removeAllCookies(null);
             String user = InstaClient.getNextUser();
             String cookie = InstaClient.getUserProperty(user, "cookie");
 //            Log.d(TAG, "cookie set: " + cookie);
-            InstaWebView.setCookie("https://www.instagram.com", cookie);
-            InstaWebView.setCookie("https://i.instagram.com", cookie);
+            InstaWebView.setInstaCookie(cookie);
 //            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
 
             InstaClient.switchToUser(user);
@@ -213,6 +201,29 @@ public class ViewActivity extends AppCompatActivity {
             });
         });
 
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_view);
+        try {
+            instaClient = InstaClient.getInstance(this);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        bindService(new Intent(this, MainService.class), serviceConnection, Context.BIND_AUTO_CREATE);
+
+        sharedPreferences = getSharedPreferences(GLOBAL_SHARED_PREF, MODE_PRIVATE);
+        spEditor = sharedPreferences.edit();
+
+        handler = new Handler(Looper.getMainLooper());
+
+        initializeViews();
+        setupRVAdapter();
+        setupSpinners();
+        setupMenu();
+        setupBiometric();
     }
 
     void readScripts() {
