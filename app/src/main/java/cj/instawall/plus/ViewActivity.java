@@ -20,7 +20,9 @@ import android.widget.FrameLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -43,7 +45,7 @@ public class ViewActivity extends AppCompatActivity {
     FloatingActionButton fab;
     int displayWidth;
 
-    ArrayAdapter<String> menuAdapter;
+    ArrayAdapter<MenuItems> menuAdapter;
     MainService mainService;
     String interceptor;
     BiometricAuth biometricAuth;
@@ -53,7 +55,7 @@ public class ViewActivity extends AppCompatActivity {
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
 
-    void initializeViews(){
+    void initializeViews() {
         readScripts();
 
         if (getSupportActionBar() != null) getSupportActionBar().hide();
@@ -70,7 +72,7 @@ public class ViewActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-
+                if (wvHolder.getVisibility() == View.VISIBLE) hideWebView();
             }
         });
 
@@ -78,7 +80,7 @@ public class ViewActivity extends AppCompatActivity {
         wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    void setupRVAdapter(){
+    void setupRVAdapter() {
         DisplayMetrics displayMetrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
         displayWidth = displayMetrics.widthPixels;
@@ -91,7 +93,7 @@ public class ViewActivity extends AppCompatActivity {
         rv.setLayoutManager(new GridLayoutManager(this, displayWidth / 500));
     }
 
-    void setupSpinners(){
+    void setupSpinners() {
         ArrayAdapter<RVAdapter.Dataset> datasetAdapter = new ArrayAdapter<RVAdapter.Dataset>(this, android.R.layout.simple_spinner_item, RVAdapter.Dataset.values());
         datasetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         gridDataset.setAdapter(datasetAdapter);
@@ -127,52 +129,87 @@ public class ViewActivity extends AppCompatActivity {
         });
     }
 
-    String[] menu = new String[]{"჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻", "", "Instagram.com", "Sync", "Continue Failed Sync", "Random Wallpaper", "Start REST Server", "Test", "New Login", "MainActivity", ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading"};
-    void setupMenu(){
-        menuAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, menu);
+    enum MenuItems {
+        Design {
+            @NonNull
+            @Override
+            public String toString() {
+                return "჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻";
+            }
+        },
+        Username {
+            @NonNull
+            @Override
+            public String toString() {
+                return InstaClient.username;
+            }
+        },
+        Open_Instagram,
+        Synchronize,
+        Continue_Failed_Sync,
+        Random_Wallpaper,
+        Start_REST_Server,
+        Test,
+        New_Login,
+        Simulate_Loading {
+            @NonNull
+            @Override
+            public String toString() {
+                return ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading";
+            }
+        };
+
+        @NonNull
+        @Override
+        public String toString() {
+            return this.name().replace('_', ' ');
+        }
+    }
+
+    void setupMenu() {
+        menuAdapter = new ArrayAdapter<MenuItems>(this, android.R.layout.simple_list_item_1, MenuItems.values());
         drawerLV.setAdapter(menuAdapter);
         drawerLV.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                switch (i) {
-                    case 1:
+                MenuItems c = MenuItems.values()[i];
+                switch (c) {
+                    case Username:
                         biometricAuth.authenticate();
                         break;
-                    case 2:
-                        wvHolder.setVisibility(View.VISIBLE);
+                    case Open_Instagram:
+                        showWebView();
                         drawerLayout.close();
                         Log.d(TAG, "onItemClick: " + InstaClient.username);
                         InstaWebView.setInstaCookie(InstaClient.getUserProperty(InstaClient.username, "cookie"));
                         wv.login();
                         break;
-                    case 3:
+                    case Synchronize:
                         instaClient.act_getSavedPosts();
                         break;
-                    case 4:
+                    case Continue_Failed_Sync:
                         instaClient.act_continueLastSync();
                         break;
-                    case 5:
+                    case Random_Wallpaper:
                         instaClient.act_setRandomWallpaper();
                         break;
-                    case 6:
+                    case Start_REST_Server:
                         new RESTServer(instaClient).startListening();
                         break;
-                    case 7:
+                    case Test:
                         break;
-                    case 8:
+                    case New_Login:
                         CookieManager.getInstance().removeAllCookies(null);
                         CookieManager.getInstance().flush();
-                        wvHolder.setVisibility(View.VISIBLE);
+                        showWebView();
                         drawerLayout.close();
                         wv.loadUrl("https://www.instagram.com");
                         break;
-                    case 10:
+                    case Simulate_Loading:
                         if (ImageViewer.simulateLoading) {
                             ImageViewer.simulateLoading = false;
-                            menu[10] = "Simulate Loading";
                         } else {
                             ImageViewer.simulateLoading = true;
-                            menu[10] = "Simulating Loading";
                         }
                         menuAdapter.notifyDataSetChanged();
                         break;
@@ -181,7 +218,7 @@ public class ViewActivity extends AppCompatActivity {
         });
     }
 
-    void setupBiometric(){
+    void setupBiometric() {
         biometricAuth = new BiometricAuth(this, () -> {
             CookieManager.getInstance().removeAllCookies(null);
             String user = InstaClient.getNextUser();
@@ -194,7 +231,6 @@ public class ViewActivity extends AppCompatActivity {
 
             handler.post(() -> {
                 wv.loadUrl("about:blank");
-                menu[1] = user;
                 menuAdapter.notifyDataSetChanged();
                 rvAdapter.setCurrentDataset(0);
                 rvAdapter.notifyDataSetChanged();
@@ -242,8 +278,6 @@ public class ViewActivity extends AppCompatActivity {
             Log.d(TAG, "ViewActivity connected to MainService");
             MainService.MainBinder binder = (MainService.MainBinder) iBinder;
             mainService = binder.getService();
-
-            menu[1] = InstaClient.username;
             menuAdapter.notifyDataSetChanged();
         }
 
@@ -258,11 +292,23 @@ public class ViewActivity extends AppCompatActivity {
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
     }
 
+    void showWebView() {
+        fab.setImageDrawable(AppCompatResources.getDrawable(this, android.R.drawable.ic_menu_close_clear_cancel));
+        wvHolder.setVisibility(View.VISIBLE);
+        fab.setVisibility(View.VISIBLE);
+    }
+
+    void hideWebView() {
+        fab.setImageDrawable(AppCompatResources.getDrawable(this, R.drawable.check));
+        wvHolder.setVisibility(View.INVISIBLE);
+        fab.setVisibility(View.INVISIBLE);
+    }
+
     @Override
     public void onBackPressed() {
         if (wv != null && wvHolder.getVisibility() == View.VISIBLE) {
             if (wv.canGoBack()) wv.goBack();
-            else wvHolder.setVisibility(View.INVISIBLE);
+            else hideWebView();
         } else if (rvAdapter.selected.size() > 0) {
             rvAdapter.clearSelection();
         } else if (imageViewer.getVisibility() == View.VISIBLE) {
