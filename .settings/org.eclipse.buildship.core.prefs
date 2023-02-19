@@ -1,4 +1,4 @@
-arguments=--init-script /home/chinmay/.config/coc/extensions/coc-java-data/server/config_linux/org.eclipse.osgi/51/0/.cp/gradle/init/init.gradle
+arguments=--init-script /home/chinmay/.config/coc/extensions/coc-java-data/1.14.1/config_linux/org.eclipse.osgi/51/0/.cp/gradle/init/init.gradle --init-script /home/chinmay/.config/coc/extensions/coc-java-data/1.14.1/config_linux/org.eclipse.osgi/51/0/.cp/gradle/protobuf/init.gradle
 auto.sync=false
 build.scans.enabled=false
 connection.gradle.distribution=GRADLE_DISTRIBUTION(WRAPPER)
