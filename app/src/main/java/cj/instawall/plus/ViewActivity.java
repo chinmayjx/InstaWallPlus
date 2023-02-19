@@ -1,6 +1,5 @@
 package cj.instawall.plus;
 
-import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -17,7 +16,6 @@ import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
@@ -28,10 +26,8 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.snackbar.Snackbar;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Scanner;
 
 public class ViewActivity extends AppCompatActivity {
@@ -66,7 +62,7 @@ public class ViewActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                
+
             }
         });
 
@@ -129,6 +125,8 @@ public class ViewActivity extends AppCompatActivity {
                     case 2:
                         wvHolder.setVisibility(View.VISIBLE);
                         drawerLayout.close();
+                        Log.d(TAG, "onItemClick: " + InstaClient.username);
+                        InstaWebView.setInstaCookie(InstaClient.getUserProperty(InstaClient.username, "cookie"));
                         wv.login();
                         break;
                     case 3:
@@ -151,9 +149,6 @@ public class ViewActivity extends AppCompatActivity {
                         wvHolder.setVisibility(View.VISIBLE);
                         drawerLayout.close();
                         wv.loadUrl("https://www.instagram.com");
-                        break;
-                    case 9:
-                        startActivity(new Intent(getApplicationContext(), MainActivity.class));
                         break;
                     case 10:
                         if (ImageViewer.simulateLoading) {

@@ -231,7 +231,7 @@ public class InstaClient {
     }
 
     private InstaClient(Context context) throws Exception {
-        sharedPreferences = context.getSharedPreferences(MainActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
+        sharedPreferences = context.getSharedPreferences(ViewActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
         spEditor = sharedPreferences.edit();
         authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
         if (!Files.exists(authInfoFile)) {

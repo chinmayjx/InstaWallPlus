@@ -38,6 +38,11 @@ public class InstaWebView extends WebView {
         }
     }
 
+    public static void setInstaCookie(String cookie){
+        InstaWebView.setCookie("https://www.instagram.com", cookie);
+        InstaWebView.setCookie("https://i.instagram.com", cookie);
+    }
+
     public InstaWebView(@NonNull Context context, Runnable loginCallback, String interceptor) {
         super(context);
         this.setBackgroundColor(Color.BLACK);
