@@ -30,6 +30,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public class ViewActivity extends AppCompatActivity {
@@ -37,7 +38,7 @@ public class ViewActivity extends AppCompatActivity {
     public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
     InstaClient instaClient;
     RecyclerView rv;
-    Spinner gridDataset, gridAction;
+    Spinner gridDataset, gridAction, accountSwitcher;
     RVAdapter rvAdapter;
     ImageViewer imageViewer;
     DrawerLayout drawerLayout;
@@ -54,6 +55,8 @@ public class ViewActivity extends AppCompatActivity {
     InstaWebView wv;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
+    ArrayList<String> loggedInUsers;
+    int currentUserIndex;
 
     void initializeViews() {
         readScripts();
@@ -68,6 +71,7 @@ public class ViewActivity extends AppCompatActivity {
         wvHolder = findViewById(R.id.wvHolder);
         gridDataset = findViewById(R.id.grid_dataset);
         gridAction = findViewById(R.id.grid_action);
+        accountSwitcher = findViewById(R.id.accountSwitcher);
 
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -127,6 +131,43 @@ public class ViewActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> adapterView) {
             }
         });
+
+        loggedInUsers = InstaClient.getLoggedInUsers();
+        currentUserIndex = loggedInUsers.indexOf(InstaClient.username);
+        ArrayAdapter<String> accountAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, loggedInUsers);
+        accountSwitcher.setAdapter(accountAdapter);
+
+        accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+                if (i == currentUserIndex) return;
+                biometricAuth.authenticate("Switch to " + loggedInUsers.get(i), () -> {
+                    String user = loggedInUsers.get(i);
+                    InstaClient.switchToUser(user);
+                    currentUserIndex = i;
+
+                    CookieManager.getInstance().removeAllCookies(null);
+                    String cookie = InstaClient.getUserProperty(user, "cookie");
+                    InstaWebView.setInstaCookie(cookie);
+
+                    handler.post(() -> {
+                        wv.loadUrl("about:blank");
+                        rvAdapter.setCurrentDataset(0);
+                        gridDataset.setSelection(0);
+                        rvAdapter.notifyDataSetChanged();
+                    });
+                }, () -> {
+                    handler.post(() -> {
+                        accountSwitcher.setSelection(currentUserIndex);
+                    });
+                });
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> adapterView) {
+
+            }
+        });
     }
 
     enum MenuItems {
@@ -135,13 +176,6 @@ public class ViewActivity extends AppCompatActivity {
             @Override
             public String toString() {
                 return "჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻";
-            }
-        },
-        Username {
-            @NonNull
-            @Override
-            public String toString() {
-                return InstaClient.username;
             }
         },
         Open_Instagram,
@@ -174,9 +208,6 @@ public class ViewActivity extends AppCompatActivity {
             public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
                 MenuItems c = MenuItems.values()[i];
                 switch (c) {
-                    case Username:
-                        biometricAuth.authenticate();
-                        break;
                     case Open_Instagram:
                         showWebView();
                         drawerLayout.close();
@@ -219,24 +250,7 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     void setupBiometric() {
-        biometricAuth = new BiometricAuth(this, () -> {
-            CookieManager.getInstance().removeAllCookies(null);
-            String user = InstaClient.getNextUser();
-            String cookie = InstaClient.getUserProperty(user, "cookie");
-//            Log.d(TAG, "cookie set: " + cookie);
-            InstaWebView.setInstaCookie(cookie);
-//            wv.loadUrl("https://www.instagram.com/" + user + "/saved/");
-
-            InstaClient.switchToUser(user);
-
-            handler.post(() -> {
-                wv.loadUrl("about:blank");
-                menuAdapter.notifyDataSetChanged();
-                rvAdapter.setCurrentDataset(0);
-                rvAdapter.notifyDataSetChanged();
-            });
-        });
-
+        biometricAuth = new BiometricAuth(this);
     }
 
     @Override
