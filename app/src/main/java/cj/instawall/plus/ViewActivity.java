@@ -171,13 +171,6 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     enum MenuItems {
-        Design {
-            @NonNull
-            @Override
-            public String toString() {
-                return "჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻";
-            }
-        },
         Open_Instagram,
         Synchronize,
         Continue_Failed_Sync,
