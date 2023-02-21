@@ -70,6 +70,7 @@ public class ImageViewer extends View {
 
     public static boolean simulateLoading = false;
     int SIMULATE_LOAD_TIME = 2000;
+
     CJImage getImageAtIndexInCurrentPost(int ix) {
         if (currentPostInfo == null || ix < 0 || ix > instaClient.numberOfImagesInPost(currentPostInfo) - 1)
             return null;
@@ -79,7 +80,7 @@ public class ImageViewer extends View {
         ref.startLoading(ImageViewer.this::postInvalidate);
         executor.execute(() -> {
             try {
-                if(simulateLoading) Thread.sleep(SIMULATE_LOAD_TIME);
+                if (simulateLoading) Thread.sleep(SIMULATE_LOAD_TIME);
                 Path pt = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, ix)));
                 ref.stopLoading();
                 ref.changeImage(pt, getWidth(), getHeight());
@@ -313,10 +314,7 @@ public class ImageViewer extends View {
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
-            if (restoreThread != null && restoreThread.isAlive()) {
-                restoreThread.interrupt();
-                restoreThread = null;
-            }
+            if (fu != null) fu.cancel(true);
         }
         if (e.getAction() == MotionEvent.ACTION_UP) {
             lastUpdate = System.currentTimeMillis();
@@ -388,31 +386,50 @@ public class ImageViewer extends View {
     long lastUpdate = 0;
     long frequency = 60;
     final float ZERO = 0.05f;
-    Thread restoreThread;
+    ScheduledExecutorService se = Executors.newSingleThreadScheduledExecutor();
+    Future<?> fu;
 
     void restore() {
-        restoreThread = new Thread(() -> {
-            try {
-                for (; ; ) {
-                    imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-                    if (imgRight != null)
-                        imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-                    if (imgLeft != null)
-                        imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-                    imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+//        restoreThread = new Thread(() -> {
+//            try {
+//                for (; ; ) {
+//                    imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+//                    if (imgRight != null)
+//                        imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+//                    if (imgLeft != null)
+//                        imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+//                    imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+//
+//
+//                    if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
+//                        break;
+//                    lastUpdate = System.currentTimeMillis();
+//                    postInvalidate();
+//                    Thread.sleep(1000 / frequency);
+//                }
+//                restoreThread = null;
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        });
+//        restoreThread.start();
+        try {
+            fu = se.scheduleAtFixedRate(() -> {
+                imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                if (imgRight != null)
+                    imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                if (imgLeft != null)
+                    imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
 
 
-                    if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
-                        break;
-                    lastUpdate = System.currentTimeMillis();
-                    postInvalidate();
-                    Thread.sleep(1000 / frequency);
-                }
-                restoreThread = null;
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        restoreThread.start();
+                if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
+                    fu.cancel(true);
+                lastUpdate = System.currentTimeMillis();
+                postInvalidate();
+            }, 0, 1000 / frequency, TimeUnit.MILLISECONDS);
+        } catch (Exception ignored) {
+            Log.d(TAG, "restore: stop");
+        }
     }
 }
