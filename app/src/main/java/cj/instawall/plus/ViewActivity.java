@@ -136,7 +136,7 @@ public class ViewActivity extends AppCompatActivity {
         currentUserIndex = loggedInUsers.indexOf(InstaClient.username);
         ArrayAdapter<String> accountAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, loggedInUsers);
         accountSwitcher.setAdapter(accountAdapter);
-
+        accountSwitcher.setSelection(currentUserIndex);
         accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {

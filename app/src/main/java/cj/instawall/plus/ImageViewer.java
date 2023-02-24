@@ -96,18 +96,21 @@ public class ImageViewer extends View {
 
         @Override
         public CJImage getNextImage() {
-            if (currentPostInfo == null || currentImageIndex >= instaClient.numberOfImagesInPost(currentPostInfo) - 1)
-                return null;
+            if (currentPostInfo == null) return null;
+            int n = instaClient.numberOfImagesInPost(currentPostInfo);
+            if (n == 1) return null;
             currentImageIndex++;
-            return getImageAtIndexInCurrentPost(currentImageIndex + 1);
+            currentImageIndex %= n;
+            return getImageAtIndexInCurrentPost((currentImageIndex + 1) % n);
         }
 
         @Override
         public CJImage getPrevImage() {
-            if (currentImageIndex <= 0)
-                return null;
-            currentImageIndex--;
-            return getImageAtIndexInCurrentPost(currentImageIndex - 1);
+            if (currentPostInfo == null) return null;
+            int n = instaClient.numberOfImagesInPost(currentPostInfo);
+            currentImageIndex = (currentImageIndex + n - 1) % n;
+            if (n == 1) return null;
+            return getImageAtIndexInCurrentPost((currentImageIndex + n - 1) % n);
         }
     };
 
