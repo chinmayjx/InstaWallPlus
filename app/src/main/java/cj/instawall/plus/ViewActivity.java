@@ -182,7 +182,13 @@ public class ViewActivity extends AppCompatActivity {
         Synchronize,
         Continue_Failed_Sync,
         Random_Wallpaper,
-        Start_REST_Server,
+        Start_REST_Server {
+            @NonNull
+            @Override
+            public String toString() {
+                return RESTServer.isRunning ? "REST Server Running" : "Start REST Server";
+            }
+        },
         Test,
         New_Login,
         Simulate_Loading {
@@ -226,6 +232,7 @@ public class ViewActivity extends AppCompatActivity {
                         break;
                     case Start_REST_Server:
                         new RESTServer(instaClient).startListening();
+                        menuAdapter.notifyDataSetChanged();
                         break;
                     case Test:
                         break;

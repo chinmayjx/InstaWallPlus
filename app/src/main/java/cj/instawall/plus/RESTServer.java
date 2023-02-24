@@ -81,10 +81,13 @@ public class RESTServer {
         executor.execute(this::start);
     }
 
+    public static boolean isRunning = false;
+
     private void start() {
         Log.d(TAG, "RESTServer started");
         try {
             ServerSocket server = new ServerSocket(4444);
+            isRunning = true;
             while (true) {
                 Socket client = server.accept();
                 executor.execute(() -> handleClient(client));

@@ -251,7 +251,7 @@ public class ImageViewer extends View {
     private float startX = 0, startY = 0;
     // 0 = undecided, 1 = x, 2 = y
     private int slideDirection = 0;
-    private final float slideThreshold = 10, slideSwitchDistance = 500, slideSwitchVelocity = 1.5f;
+    private final float slideThreshold = 3, slideSwitchDistance = 500, slideSwitchVelocity = 1.5f;
     long slideStartTime = 0;
 
     @Override
@@ -272,7 +272,7 @@ public class ImageViewer extends View {
             float delX = e.getX() - startX;
             float delY = e.getY() - startY;
             if (slideDirection == 0) {
-                if (Math.abs(delX) > slideThreshold) slideDirection = 1;
+                if (Math.abs(delX) > slideThreshold * 3.75) slideDirection = 1;
                 else if (Math.abs(delY) > slideThreshold) slideDirection = 2;
             } else {
                 if (slideDirection == 1) {
@@ -349,8 +349,8 @@ public class ImageViewer extends View {
                         setPostByPath(imgCenter.path);
                     } else if (delY > slideSwitchDistance || (delY > 0 && vel > slideSwitchVelocity)) {
                         if (!history.isEmpty()) {
-                            future.push(imgCenter);
-//                            imgCenter.destroy();
+                            future.push(imgBottom);
+                            imgBottom = imgCenter;
                             imgCenter = bottomImageProvider.getPrevImage();
                             setPostByPath(imgCenter.path);
                         }
