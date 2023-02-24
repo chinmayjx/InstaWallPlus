@@ -342,11 +342,10 @@ public class ImageViewer extends View {
                     float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (delY < -slideSwitchDistance || (delY < 0 && vel > slideSwitchVelocity)) {
                         history.push(imgCenter);
-//                        imgCenter.destroy();
+                        imgCenter = imgBottom;
                         if (future.isEmpty()) {
-                            imgCenter = imgBottom;
                             imgBottom = bottomImageProvider.getNextImage();
-                        } else imgCenter = future.pop();
+                        } else imgBottom = future.pop();
                         setPostByPath(imgCenter.path);
                     } else if (delY > slideSwitchDistance || (delY > 0 && vel > slideSwitchVelocity)) {
                         if (!history.isEmpty()) {
