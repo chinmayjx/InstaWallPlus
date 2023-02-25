@@ -103,6 +103,7 @@ public class CJImage {
     }
 
     public void drawOnCanvas(Canvas canvas, Paint paint) {
+        if (transform.opacity < 0.1) return;
         canvas.save();
         int oldOpacity = paint.getAlpha();
         paint.setAlpha((int) (transform.opacity * 255));

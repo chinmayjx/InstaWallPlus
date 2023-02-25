@@ -235,7 +235,6 @@ public class ImageViewer extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        canvas.drawBitmap(background, 0, 0, paint);
         if (imgLeft != null) imgLeft.drawOnCanvas(canvas, paint);
         if (imgRight != null) imgRight.drawOnCanvas(canvas, paint);
         imgBottom.drawOnCanvas(canvas, paint);
@@ -384,10 +383,10 @@ public class ImageViewer extends View {
         return super.onTouchEvent(e);
     }
 
-    float velocity = 0.0125f;
+    float velocity = 0.01f;
     long lastUpdate = 0;
-    long frequency = 120;
-    final float ZERO = 0.1f;
+    long frequency = 720;
+    final float ZERO = 0.05f;
     ScheduledExecutorService se = Executors.newSingleThreadScheduledExecutor();
     Future<?> fu;
 
