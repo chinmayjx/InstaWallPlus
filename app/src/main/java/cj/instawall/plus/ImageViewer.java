@@ -161,8 +161,10 @@ public class ImageViewer extends View {
     void loadPostInfo(String postID) {
         currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, postID);
         nImagesInPost = currentPostInfo == null ? 0 : instaClient.numberOfImagesInPost(currentPostInfo);
-        imgLeft = getImageAtIndexInCurrentPost(currentImageIndex - 1);
-        imgRight = getImageAtIndexInCurrentPost(currentImageIndex + 1);
+        if (nImagesInPost > 1) {
+            imgLeft = getImageAtIndexInCurrentPost((currentImageIndex + nImagesInPost - 1) % nImagesInPost);
+            imgRight = getImageAtIndexInCurrentPost((currentImageIndex + 1) % nImagesInPost);
+        }
         if (imgLeft != null) imgLeft.transform.target = leftTransform();
         if (imgRight != null) imgRight.transform.target = rightTransform();
         postInvalidate();
@@ -181,7 +183,7 @@ public class ImageViewer extends View {
         if (currentPostInfo == null) {
             singleTask = singleExecutor.schedule(() -> {
                 try {
-                    if (currentPostInfo == null) currentPostInfo = instaClient.getPostInfo(a[0]);
+                    currentPostInfo = instaClient.getPostInfo(a[0]);
                     loadPostInfo(a[1]);
                 } catch (Exception ex) {
                     Log.e(TAG, "setPostByPath: " + p.getFileName() + " " + Log.getStackTraceString(ex));
@@ -194,8 +196,6 @@ public class ImageViewer extends View {
         setPostByPath(p);
         imgCenter = new CJImage(p, getWidth(), getHeight());
         imgBottom = bottomImageProvider.getNextImage();
-        imgLeft = sideImageProvider.getPrevImage();
-        imgRight = sideImageProvider.getNextImage();
 
         this.invalidate();
     }
