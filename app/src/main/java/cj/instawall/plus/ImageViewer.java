@@ -384,38 +384,16 @@ public class ImageViewer extends View {
         return super.onTouchEvent(e);
     }
 
-    float velocity = 0.02f;
+    float velocity = 0.0125f;
     long lastUpdate = 0;
-    long frequency = 60;
-    final float ZERO = 0.05f;
+    long frequency = 120;
+    final float ZERO = 0.1f;
     ScheduledExecutorService se = Executors.newSingleThreadScheduledExecutor();
     Future<?> fu;
 
     void restore() {
-//        restoreThread = new Thread(() -> {
-//            try {
-//                for (; ; ) {
-//                    imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-//                    if (imgRight != null)
-//                        imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-//                    if (imgLeft != null)
-//                        imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-//                    imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
-//
-//
-//                    if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
-//                        break;
-//                    lastUpdate = System.currentTimeMillis();
-//                    postInvalidate();
-//                    Thread.sleep(1000 / frequency);
-//                }
-//                restoreThread = null;
-//            } catch (InterruptedException e) {
-//                e.printStackTrace();
-//            }
-//        });
-//        restoreThread.start();
         try {
+            lastUpdate = System.currentTimeMillis();
             fu = se.scheduleAtFixedRate(() -> {
                 imgCenter.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                 if (imgRight != null)
