@@ -191,11 +191,11 @@ public class ImageViewer extends View {
     }
 
     public void loadImage(Path p) {
+        setPostByPath(p);
         imgCenter = new CJImage(p, getWidth(), getHeight());
         imgBottom = bottomImageProvider.getNextImage();
-        imgLeft = null;
-        imgRight = null;
-        setPostByPath(p);
+        imgLeft = sideImageProvider.getPrevImage();
+        imgRight = sideImageProvider.getNextImage();
 
         this.invalidate();
     }
@@ -251,7 +251,7 @@ public class ImageViewer extends View {
     private float startX = 0, startY = 0;
     // 0 = undecided, 1 = x, 2 = y
     private int slideDirection = 0;
-    private final float slideThreshold = 3, slideSwitchDistance = 500, slideSwitchVelocity = 1.5f;
+    private final float slideThreshold = 5, slideSwitchDistance = 500, slideSwitchVelocity = 1.5f;
     long slideStartTime = 0;
 
     @Override
