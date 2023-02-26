@@ -10,8 +10,8 @@ android {
         applicationId "cj.instawall.plus"
         minSdk 30
         targetSdk 32
-        versionCode 26
-        versionName "2.6"
+        versionCode 28
+        versionName "28"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

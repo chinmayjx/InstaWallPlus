@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
 
 public class ImageViewer extends View {
     public static final String TAG = "CJ";
-    CJImage imgCenter, imgRight, imgLeft, imgBottom;
+    CJImage imgCenter, imgRight, imgLeft, imgBottom, imgTop;
     Paint paint = new Paint();
     Bitmap background;
     ExecutorService executor = Executors.newCachedThreadPool();
@@ -158,6 +158,13 @@ public class ImageViewer extends View {
         return bt;
     }
 
+    CJImage.Transform topTransform() {
+        CJImage.Transform bt = new CJImage.Transform();
+        bt.translateY = -imgTop.position.y + imgCenter.position.y - imgTop.bitmap.getHeight();
+        bt.opacity = 0;
+        return bt;
+    }
+
     void loadPostInfo(String postID) {
         currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, postID);
         nImagesInPost = currentPostInfo == null ? 0 : instaClient.numberOfImagesInPost(currentPostInfo);
@@ -237,6 +244,7 @@ public class ImageViewer extends View {
         super.onDraw(canvas);
         if (imgLeft != null) imgLeft.drawOnCanvas(canvas, paint);
         if (imgRight != null) imgRight.drawOnCanvas(canvas, paint);
+        if (imgTop != null) imgTop.drawOnCanvas(canvas, paint);
         imgBottom.drawOnCanvas(canvas, paint);
         imgCenter.drawOnCanvas(canvas, paint);
         drawDots(canvas);
@@ -290,6 +298,9 @@ public class ImageViewer extends View {
                     if (delY < 0) {
                         imgBottom.transform.translateY = -imgBottom.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight() + delY;
                         imgBottom.transform.opacity = Math.min(Math.abs(delY / imgCenter.bitmap.getHeight()), 1);
+                    } else if (imgTop != null) {
+                        imgTop.transform.translateY = -imgTop.position.y + imgCenter.position.y - imgTop.bitmap.getHeight() + delY;
+                        imgTop.transform.opacity = Math.min(Math.abs(delY / imgCenter.bitmap.getHeight()), 1);
                     }
                 }
                 invalidate();
@@ -340,17 +351,19 @@ public class ImageViewer extends View {
                 if (slideDirection == 2) {
                     float vel = Math.abs(delY) / (Math.max(System.currentTimeMillis() - slideStartTime, 1));
                     if (delY < -slideSwitchDistance || (delY < 0 && vel > slideSwitchVelocity)) {
-                        history.push(imgCenter);
+                        if (imgTop != null) history.push(imgTop);
+                        imgTop = imgCenter;
                         imgCenter = imgBottom;
                         if (future.isEmpty()) {
                             imgBottom = bottomImageProvider.getNextImage();
                         } else imgBottom = future.pop();
                         setPostByPath(imgCenter.path);
                     } else if (delY > slideSwitchDistance || (delY > 0 && vel > slideSwitchVelocity)) {
-                        if (!history.isEmpty()) {
+                        if (imgTop != null) {
                             future.push(imgBottom);
                             imgBottom = imgCenter;
-                            imgCenter = bottomImageProvider.getPrevImage();
+                            imgCenter = imgTop;
+                            imgTop = bottomImageProvider.getPrevImage();
                             setPostByPath(imgCenter.path);
                         }
                     }
@@ -374,6 +387,7 @@ public class ImageViewer extends View {
             if (imgRight != null) imgRight.transform.target = rightTransform();
             if (imgLeft != null) imgLeft.transform.target = leftTransform();
             imgBottom.transform.target = bottomTransform();
+            if (imgTop != null) imgTop.transform.target = topTransform();
             invalidate();
             restore();
             slideDirection = 0;
@@ -399,10 +413,12 @@ public class ImageViewer extends View {
                     imgRight.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                 if (imgLeft != null)
                     imgLeft.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
+                if (imgTop != null)
+                    imgTop.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
                 imgBottom.transform.absoluteToTarget(velocity * (System.currentTimeMillis() - lastUpdate));
 
 
-                if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
+                if (imgCenter.transform.distanceToTarget() < ZERO && (imgRight == null || imgRight.transform.distanceToTarget() < ZERO) && (imgLeft == null || imgLeft.transform.distanceToTarget() < ZERO) && (imgTop == null || imgTop.transform.distanceToTarget() < ZERO) && imgBottom.transform.distanceToTarget() < ZERO)
                     fu.cancel(true);
                 lastUpdate = System.currentTimeMillis();
                 postInvalidate();
