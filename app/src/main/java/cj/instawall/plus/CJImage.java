@@ -107,14 +107,9 @@ public class CJImage {
         canvas.save();
         int oldOpacity = paint.getAlpha();
         paint.setAlpha((int) (transform.opacity * 255));
+        canvas.translate(transform.translateX, transform.translateY);
         canvas.scale(transform.scaleFactor, transform.scaleFactor, transform.pivotX, transform.pivotY);
         canvas.rotate(transform.rotation, transform.pivotX, transform.pivotY);
-        float nx, ny;
-        float rad = (float) Math.toRadians(transform.rotation);
-        double sin = Math.sin(rad), cos = Math.cos(rad);
-        nx = (float) (transform.translateX * cos + transform.translateY * sin);
-        ny = (float) (-transform.translateX * sin + transform.translateY * cos);
-        canvas.translate(nx / transform.scaleFactor, ny / transform.scaleFactor);
         canvas.drawBitmap(bitmap, position.x, position.y, paint);
         canvas.restore();
         paint.setAlpha(oldOpacity);

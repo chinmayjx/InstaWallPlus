@@ -266,19 +266,23 @@ public class ImageViewer extends View {
         if (e.getPointerCount() == 1) {
             if (scaling) {
                 scaling = false;
-                startX = e.getX();
-                startY = e.getY();
+                startX = e.getX() - imgCenter.transform.translateX;
+                startY = e.getY() - imgCenter.transform.translateY;
                 slideStartTime = System.currentTimeMillis();
             }
             if (!sliding) {
-                startX = e.getX();
-                startY = e.getY();
+                startX = e.getX() - imgCenter.transform.translateX;
+                startY = e.getY() - imgCenter.transform.translateY;
                 sliding = true;
                 slideStartTime = System.currentTimeMillis();
             }
             float delX = e.getX() - startX;
             float delY = e.getY() - startY;
-            if (slideDirection == 0) {
+            if (imgCenter.transform.scaleFactor > 1.1) {
+                imgCenter.transform.translateX = delX;
+                imgCenter.transform.translateY = delY;
+                invalidate();
+            } else if (slideDirection == 0) {
                 if (Math.abs(delX) > slideThreshold * 3.75) slideDirection = 1;
                 else if (Math.abs(delY) > slideThreshold) slideDirection = 2;
             } else {
@@ -314,10 +318,10 @@ public class ImageViewer extends View {
             int mx = (int) ((x1 + x2) / 2);
             int my = (int) ((y1 + y2) / 2);
             if (!scaling) {
-                startScale = twoFingerDist;
-                startAngle = deg;
-                imgCenter.transform.pivotX = mx;
+                startScale = twoFingerDist / imgCenter.transform.scaleFactor;
+                startAngle = deg - imgCenter.transform.rotation;
                 imgCenter.transform.pivotY = my;
+                imgCenter.transform.pivotX = mx;
                 scaling = true;
             }
             imgCenter.transform.scaleFactor = twoFingerDist / startScale;
