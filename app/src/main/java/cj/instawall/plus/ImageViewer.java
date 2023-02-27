@@ -278,7 +278,7 @@ public class ImageViewer extends View {
             }
             float delX = e.getX() - startX;
             float delY = e.getY() - startY;
-            if (imgCenter.transform.scaleFactor > 1.1) {
+            if (Math.abs(imgCenter.transform.scaleFactor - 1) > 0.1) {
                 imgCenter.transform.translateX = delX;
                 imgCenter.transform.translateY = delY;
                 invalidate();
@@ -320,8 +320,8 @@ public class ImageViewer extends View {
             if (!scaling) {
                 startScale = twoFingerDist / imgCenter.transform.scaleFactor;
                 startAngle = deg - imgCenter.transform.rotation;
-                imgCenter.transform.pivotY = my;
-                imgCenter.transform.pivotX = mx;
+                imgCenter.transform.pivotY = my - imgCenter.transform.translateY;
+                imgCenter.transform.pivotX = mx - imgCenter.transform.translateX;
                 scaling = true;
             }
             imgCenter.transform.scaleFactor = twoFingerDist / startScale;
