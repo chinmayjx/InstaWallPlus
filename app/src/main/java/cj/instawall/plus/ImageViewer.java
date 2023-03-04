@@ -317,17 +317,30 @@ public class ImageViewer extends View {
             float deg = (float) (Math.atan2((y2 - y1), (x2 - x1)) * 180 / Math.PI);
             int mx = (int) ((x1 + x2) / 2);
             int my = (int) ((y1 + y2) / 2);
+            CJImage.Transform t = imgCenter.transform;
             if (!scaling) {
-                startScale = twoFingerDist / imgCenter.transform.scaleFactor;
-                startAngle = deg - imgCenter.transform.rotation;
-                imgCenter.transform.pivotY = my - imgCenter.transform.translateY;
-                imgCenter.transform.pivotX = mx - imgCenter.transform.translateX;
+                startScale = twoFingerDist / t.scaleFactor;
+                startAngle = deg - t.rotation;
+                float s = (float) Math.sin(Math.toRadians(t.rotation));
+                float c = (float) Math.cos(Math.toRadians(t.rotation));
+                float ts = t.scaleFactor * s;
+                float tc = t.scaleFactor * c;
+                float c1 = t.pivotX + t.translateX - mx
+                        - (t.pivotX - mx) * tc
+                        + (t.pivotY - my) * ts;
+                float c2 = t.pivotY + t.translateY - my
+                        - (t.pivotY - my) * tc
+                        - (t.pivotX - mx) * ts;
+                float dpx = (c1 * c + c2 * s) / t.scaleFactor;
+                float dpy = (c2 * c - c1 * s) / t.scaleFactor;
+                t.pivotY = my - dpy;
+                t.pivotX = mx - dpx;
                 scaling = true;
             }
-            imgCenter.transform.scaleFactor = twoFingerDist / startScale;
-            imgCenter.transform.rotation = deg - startAngle;
-            imgCenter.transform.translateX = mx - imgCenter.transform.pivotX;
-            imgCenter.transform.translateY = my - imgCenter.transform.pivotY;
+            t.scaleFactor = twoFingerDist / startScale;
+            t.rotation = deg - startAngle;
+            t.translateX = mx - t.pivotX;
+            t.translateY = my - t.pivotY;
             invalidate();
         }
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
