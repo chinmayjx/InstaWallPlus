@@ -260,6 +260,10 @@ public class ViewActivity extends AppCompatActivity {
         biometricAuth = new BiometricAuth(this);
     }
 
+    void onCreateTest(){
+        instaClient.act_test();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -281,6 +285,8 @@ public class ViewActivity extends AppCompatActivity {
         setupSpinners();
         setupMenu();
         setupBiometric();
+
+        onCreateTest();
     }
 
     void readScripts() {

@@ -117,8 +117,8 @@ public class InstaClient {
         try {
             deletedImages = null;
             savedPostsJSON = null;
-            username = authInfo.getString("current_user");
-            appID = authInfo.getString("app_id");
+            username = authInfo.optString("current_user");
+            appID = authInfo.optString("app_id");
             cookie = getUserProperty(username, "cookie");
             sessionID = getSessionID(cookie);
 
@@ -166,6 +166,7 @@ public class InstaClient {
         try {
             ArrayList<String> arr = new ArrayList<>();
             JSONArray ja = authInfo.getJSONObject("user_data").names();
+            if (ja == null) return arr;
             for (int i = 0; i < ja.length(); i++) {
                 arr.add(ja.getString(i));
             }
@@ -215,7 +216,7 @@ public class InstaClient {
             JSONObject userData = authInfo.getJSONObject("user_data").getJSONObject(username);
             return userData.getString(property);
         } catch (JSONException e) {
-            Log.e(TAG, "failed to get user property, " + Log.getStackTraceString(e));
+            Log.e(TAG, "failed to get user property, " + property);
         }
         return null;
     }
@@ -241,7 +242,7 @@ public class InstaClient {
             throw new Exception("no auth info file found, created one");
         }
         authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
-        //       Log.d(TAG, "authInfo: " + authInfo.toString(2));
+//        Log.d(TAG, "authInfo: " + authInfo.toString(2));
 
         this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.lifoExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
@@ -314,9 +315,11 @@ public class InstaClient {
     // ----------------------------------------------------------
 
     private void test() {
+        String TAG = "TEST";
         try {
-//            Log.d(TAG, "test: me");
-//            getPostCodeToID("ClwQXg9I4IA");
+            Log.d(TAG, "test: me");
+//            Log.d(TAG, "test: " + getPostCodeToID("CnSr4Q1ykSK"));
+//            getPostInfo("3013664083037275274");
         } catch (Exception e) {
             Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
         }
@@ -811,6 +814,7 @@ public class InstaClient {
 
     // miscellaneous utils -----------------------------------------
     static String getSessionID(String cookie) {
+        if (cookie == null) return null;
         Matcher m = Pattern.compile("sessionid=(\\d*)").matcher(cookie);
         if (m.find()) {
             return m.group(1);
