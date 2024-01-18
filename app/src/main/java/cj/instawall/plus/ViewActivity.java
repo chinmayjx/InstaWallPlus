@@ -218,7 +218,9 @@ public class ViewActivity extends AppCompatActivity {
                         showWebView();
                         drawerLayout.close();
                         Log.d(TAG, "onItemClick: " + InstaClient.username);
-                        InstaWebView.setInstaCookie(InstaClient.getUserProperty(InstaClient.username, "cookie"));
+                        String cookie = InstaClient.getUserProperty(InstaClient.username, "cookie");
+                        if (cookie != null)
+                            InstaWebView.setInstaCookie(cookie);
                         wv.login();
                         break;
                     case Synchronize:
@@ -261,7 +263,7 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     void onCreateTest(){
-        instaClient.act_test();
+//        instaClient.act_test();
     }
 
     @Override
