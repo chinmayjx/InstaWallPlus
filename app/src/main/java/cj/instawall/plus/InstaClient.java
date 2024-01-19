@@ -282,8 +282,6 @@ public class InstaClient {
         executor.execute(() -> getSavedPosts(false));
     }
 
-    public void act_getUserInfo() {
-        executor.execute(this::getUserInfo);
     }
 
     public void act_setWallpaperFromCode(String code) {
@@ -673,18 +671,6 @@ public class InstaClient {
         return newFileName;
     }
 
-    private JSONObject getUserInfo() {
-        try {
-            Log.d(TAG, "Getting user info");
-            HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/users/web_profile_info/?username=" + username);
-            JSONObject res = getJSONResponse(con);
-            return res;
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        }
-        return null;
-    }
-
     private void getSavedPosts(boolean continueLast) {
         try {
             Log.d(TAG, "getSavedPosts: begin");
@@ -740,45 +726,6 @@ public class InstaClient {
         }
     }
 
-    private void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
-                                  int repeatCount, int repeatLimit) {
-        try {
-            JSONArray newEdges = savedMedia.optJSONArray("edges");
-            if (newEdges != null) {
-                for (int i = 0; i < newEdges.length(); i++) {
-                    if (set.contains(SavedItem.postID(newEdges.getJSONObject(i)))) {
-                        repeatCount++;
-                    } else {
-                        edges.put(newEdges.get(i));
-                    }
-                }
-            }
-            Log.d(TAG, "Got " + edges.length() + " posts");
-            JSONObject pageInfo = savedMedia.getJSONObject("page_info");
-            Log.d(TAG, newEdges.length() + " : " + pageInfo.toString(2));
-            if (repeatCount >= repeatLimit) {
-                Log.d(TAG, "post repeat limit reached, sync complete");
-                return;
-            }
-            if (pageInfo.getBoolean("has_next_page")) {
-                String cursor = pageInfo.getString("end_cursor");
-                if (!cursor.isEmpty()) {
-                    spEditor.putString(SPKeys.LAST_SYNC_CURSOR, cursor);
-                    spEditor.apply();
-                }
-                HttpURLConnection con = getConnection("https://www.instagram.com/graphql/query/?query_hash=2ce1d673055b99250e93b6f88f878fde&variables=" +
-                        URLEncoder.encode("{\"id\":\"" + sessionID + "\",\"first\":100,\"after\":\"" + cursor + "\"}", StandardCharsets.UTF_8.toString()));
-                JSONObject res = getJSONResponse(con);
-                savedMedia = res.getJSONObject("data")
-                        .getJSONObject("user")
-                        .getJSONObject("edge_saved_media");
-                getAllSavedPosts(edges, savedMedia, set, repeatCount, repeatLimit);
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        }
-    }
 
     private String getPostCodeToID(String code) {
         try {
