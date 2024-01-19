@@ -110,6 +110,12 @@ public class InstaClient {
         public static String postCode(JSONObject savedItem) throws JSONException {
             return savedItem.getJSONObject("node").getString("shortcode");
         }
+
+        public static int numberOfImages(JSONObject savedItem) throws JSONException{
+            JSONArray carousel = savedItem.getJSONObject("media").optJSONArray("carousel_media");
+            if (carousel == null) return 1;
+            return carousel.length();
+        }
     }
 
     // auth utils -----------------------------------
@@ -411,30 +417,34 @@ public class InstaClient {
         int startIndex = savedItemIndex;
         while (true) {
             JSONObject savedItem = savedPosts.getJSONObject(savedItemIndex);
-            String postID = SavedItem.postID(savedItem);
-            JSONObject randomPostInfo = null;
-            try {
-                randomPostInfo = getPostInfo(postID);
-            } catch (FileNotFoundException e) {
-                Log.e(TAG, "can't get post info for " + postID + ", check " + "https://www.instagram.com/p/" + SavedItem.postCode(savedItem));
-            }
-            int nInPost = numberOfImagesInPost(randomPostInfo);
-            int imageIndex = (int) (Math.random() * nInPost);
-            int startingImageIndex = imageIndex;
-            while (true) {
-                String imageID = getImageAtIndexInPost(randomPostInfo, imageIndex);
-                if (!getDeletedImages().has(imageID))
-                    return Paths.get(imagePath, getImageInPost(randomPostInfo, imageID));
-                imageIndex = (imageIndex + 1) % nInPost;
-                if (imageIndex == startingImageIndex) {
-                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
-                    if (savedItemIndex == startIndex) {
-                        throw new Exception("No undeleted saved posts found");
-                    }
-                    break;
-                }
-            }
+            int numberOfImages = SavedItem.numberOfImages(savedItem);
+            Log.d(TAG, "getRandomImage: " + numberOfImages);
+            break;
+//            String postID = SavedItem.postID(savedItem);
+//            JSONObject randomPostInfo = null;
+//            try {
+//                randomPostInfo = getPostInfo(postID);
+//            } catch (FileNotFoundException e) {
+//                Log.e(TAG, "can't get post info for " + postID + ", check " + "https://www.instagram.com/p/" + SavedItem.postCode(savedItem));
+//            }
+//            int nInPost = numberOfImagesInPost(randomPostInfo);
+//            int imageIndex = (int) (Math.random() * nInPost);
+//            int startingImageIndex = imageIndex;
+//            while (true) {
+//                String imageID = getImageAtIndexInPost(randomPostInfo, imageIndex);
+//                if (!getDeletedImages().has(imageID))
+//                    return Paths.get(imagePath, getImageInPost(randomPostInfo, imageID));
+//                imageIndex = (imageIndex + 1) % nInPost;
+//                if (imageIndex == startingImageIndex) {
+//                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
+//                    if (savedItemIndex == startIndex) {
+//                        throw new Exception("No undeleted saved posts found");
+//                    }
+//                    break;
+//                }
+//            }
         }
+        return null;
     }
 
     // modify app data ------------------------------------------
@@ -554,7 +564,7 @@ public class InstaClient {
         } catch (NoSuchFileException e) {
             try {
                 savedPostsJSON = new JSONArray("[]");
-            } catch (Exception f) {
+            } catch (Exception ignored) {
             }
         } catch (Exception f) {
             Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
