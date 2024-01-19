@@ -104,17 +104,23 @@ public class InstaClient {
 
     static class SavedItem {
         public static String postID(JSONObject savedItem) throws JSONException {
-            return savedItem.getJSONObject("node").getString("id");
+            return savedItem.getJSONObject("media").getString("pk");
         }
 
         public static String postCode(JSONObject savedItem) throws JSONException {
             return savedItem.getJSONObject("node").getString("shortcode");
         }
 
-        public static int numberOfImages(JSONObject savedItem) throws JSONException{
+        public static int numberOfImages(JSONObject savedItem) throws JSONException {
             JSONArray carousel = savedItem.getJSONObject("media").optJSONArray("carousel_media");
             if (carousel == null) return 1;
             return carousel.length();
+        }
+
+        public static JSONObject itemAtIndex(JSONObject savedItem, int index) throws JSONException {
+            JSONArray carousel = savedItem.getJSONObject("media").optJSONArray("carousel_media");
+            if (carousel == null) return savedItem.getJSONObject("media");
+            return (JSONObject) carousel.get(index);
         }
     }
 
@@ -418,33 +424,26 @@ public class InstaClient {
         while (true) {
             JSONObject savedItem = savedPosts.getJSONObject(savedItemIndex);
             int numberOfImages = SavedItem.numberOfImages(savedItem);
-            Log.d(TAG, "getRandomImage: " + numberOfImages);
-            break;
-//            String postID = SavedItem.postID(savedItem);
-//            JSONObject randomPostInfo = null;
-//            try {
-//                randomPostInfo = getPostInfo(postID);
-//            } catch (FileNotFoundException e) {
-//                Log.e(TAG, "can't get post info for " + postID + ", check " + "https://www.instagram.com/p/" + SavedItem.postCode(savedItem));
-//            }
-//            int nInPost = numberOfImagesInPost(randomPostInfo);
-//            int imageIndex = (int) (Math.random() * nInPost);
-//            int startingImageIndex = imageIndex;
-//            while (true) {
-//                String imageID = getImageAtIndexInPost(randomPostInfo, imageIndex);
-//                if (!getDeletedImages().has(imageID))
-//                    return Paths.get(imagePath, getImageInPost(randomPostInfo, imageID));
-//                imageIndex = (imageIndex + 1) % nInPost;
-//                if (imageIndex == startingImageIndex) {
-//                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
-//                    if (savedItemIndex == startIndex) {
-//                        throw new Exception("No undeleted saved posts found");
-//                    }
-//                    break;
-//                }
-//            }
+            String postID = SavedItem.postID(savedItem);
+            int imageIndex = (int) (Math.random() * numberOfImages);
+            int startingImageIndex = imageIndex;
+            while (true){
+                JSONObject carouselItem = SavedItem.itemAtIndex(savedItem, imageIndex);
+                String imageID = carouselItem.getString("pk");
+                if (!getDeletedImages().has(imageID)){
+                    String fileName = saveImageFromObject(carouselItem, postID);
+                    return Paths.get(imagePath, fileName);
+                }
+                imageIndex = (imageIndex + 1) % numberOfImages;
+                if (imageIndex == startingImageIndex) {
+                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
+                    if (savedItemIndex == startIndex) {
+                        throw new Exception("No undeleted saved posts found");
+                    }
+                    break;
+                }
+            }
         }
-        return null;
     }
 
     // modify app data ------------------------------------------
@@ -579,7 +578,7 @@ public class InstaClient {
         } catch (NoSuchFileException e) {
             try {
                 deletedImages = new JSONObject("{}");
-            } catch (Exception f) {
+            } catch (Exception ignored) {
             }
         } catch (Exception f) {
             Log.e(TAG, "getDeletedImages: " + Log.getStackTraceString(f));
@@ -694,23 +693,23 @@ public class InstaClient {
             JSONArray items = new JSONArray();
             JSONArray newItems = new JSONArray();
             boolean moreAvailable = true;
-            while (moreAvailable){
+            while (moreAvailable) {
                 String url = "https://www.instagram.com/api/v1/feed/saved/posts/";
-                if (max_id != null){
+                if (max_id != null) {
                     url += "?max_id=" + max_id;
                 }
                 HttpURLConnection con = getConnection(url);
                 JSONObject res = getJSONResponse(con);
                 moreAvailable = res.getBoolean("more_available");
                 JSONArray tmpItems = res.getJSONArray("items");
-                for (int i=0; i < tmpItems.length(); i++){
+                for (int i = 0; i < tmpItems.length(); i++) {
                     newItems.put(tmpItems.get(i));
                 }
                 max_id = res.optString("next_max_id");
                 Log.d(TAG, String.format("got %d new posts, next max_id is %s", tmpItems.length(), max_id));
             }
             Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", items.length(), newItems.length()));
-            for (int i=newItems.length() - 1; i >= 0; i--){
+            for (int i = newItems.length() - 1; i >= 0; i--) {
                 items.put(newItems.get(i));
             }
             Files.copy(new ByteArrayInputStream(items.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
@@ -861,7 +860,7 @@ public class InstaClient {
     }
 
     String filenameFromUrl(String url) {
-        Pattern p = Pattern.compile("\\w*.jpg");
+        Pattern p = Pattern.compile("\\w*\\.(jpg|webp)");
         Matcher m = p.matcher(url);
         if (m.find()) {
             return url.substring(m.start(), m.end());
