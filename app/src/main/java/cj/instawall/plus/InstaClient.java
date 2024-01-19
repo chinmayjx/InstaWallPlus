@@ -25,7 +25,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -35,7 +34,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -52,19 +51,20 @@ public class InstaClient {
     public static final String META = "meta";
     public static final String IMAGES = "images";
     public static final String DELETED = ".deleted_images";
+    public static final String SAVED_POSTS = "saved_posts";
     ThreadPoolExecutor executor;
     ThreadPoolExecutor lifoExecutor;
     JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
+    static List<String> savedPostIDs;
     static JSONObject deletedImages;
-    static JSONArray savedPostsJSON;
     static Map<String, String> headers;
     static JSONObject authInfo;
     static Path authInfoFile;
 
-    static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir, deletedImagePath;
+    static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir, savedPostPath, deletedImagePath;
 
     // utilities to access JSON ---------------------
     static class PostInfo {
@@ -106,10 +106,6 @@ public class InstaClient {
             return savedItem.getJSONObject("media").getString("pk");
         }
 
-        public static String postCode(JSONObject savedItem) throws JSONException {
-            return savedItem.getJSONObject("node").getString("shortcode");
-        }
-
         public static int numberOfImages(JSONObject savedItem) throws JSONException {
             JSONArray carousel = savedItem.getJSONObject("media").optJSONArray("carousel_media");
             if (carousel == null) return 1;
@@ -121,13 +117,24 @@ public class InstaClient {
             if (carousel == null) return savedItem.getJSONObject("media");
             return (JSONObject) carousel.get(index);
         }
+
+        public static JSONObject load(String postID) {
+            try {
+                String savedItem = new String(Files.readAllBytes(Paths.get(savedPostPath, postID)));
+                JSONObject savedItemJSON = new JSONObject(savedItem);
+                return savedItemJSON;
+            } catch (Exception e) {
+                Log.e(TAG, "load: " + Log.getStackTraceString(e));
+            }
+            return null;
+        }
     }
 
     // auth utils -----------------------------------
     public static void initializeVariables() {
         try {
             deletedImages = null;
-            savedPostsJSON = null;
+            savedPostIDs = null;
             username = authInfo.optString("current_user");
             appID = authInfo.optString("app_id");
             cookie = getUserProperty(username, "cookie");
@@ -140,10 +147,12 @@ public class InstaClient {
             Files.createDirectories(Paths.get(filesDir, username, IMAGES));
             Files.createDirectories(Paths.get(filesDir, username, META));
             Files.createDirectories(Paths.get(filesDir, username, DELETED));
+            Files.createDirectories(Paths.get(filesDir, username, SAVED_POSTS));
 
             metaPath = Paths.get(filesDir, username, META).toString();
             imagePath = Paths.get(filesDir, username, IMAGES).toString();
             deletedImagePath = Paths.get(filesDir, username, DELETED).toString();
+            savedPostPath = Paths.get(filesDir, username, SAVED_POSTS).toString();
 
         } catch (Exception e) {
             Log.e(TAG, "initializeVariables: " + Log.getStackTraceString(e));
@@ -186,14 +195,6 @@ public class InstaClient {
             Log.e(TAG, "getLoggedInUsers: " + Log.getStackTraceString(e));
         }
         return new ArrayList<>();
-    }
-
-    public static String getNextUser() {
-        ArrayList<String> users = getLoggedInUsers();
-        for (int i = 0; i < users.size(); i++) {
-            if (users.get(i).equals(username)) return users.get((i + 1) % users.size());
-        }
-        return null;
     }
 
     public static void setAppID(String appID) {
@@ -282,8 +283,6 @@ public class InstaClient {
         executor.execute(() -> getSavedPosts(false));
     }
 
-    }
-
     public void act_setWallpaperFromCode(String code) {
         executor.execute(() -> {
             try {
@@ -324,11 +323,8 @@ public class InstaClient {
     // ----------------------------------------------------------
 
     private void test() {
-        String TAG = "TEST";
         try {
-            Log.d(TAG, "test: me");
-//            Log.d(TAG, "test: " + getPostCodeToID("CnSr4Q1ykSK"));
-//            getPostInfo("3013664083037275274");
+            Log.d(TAG, "test: " + getSavedPostIDs());
         } catch (Exception e) {
             Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
         }
@@ -415,11 +411,11 @@ public class InstaClient {
     }
 
     private Path getRandomImage() throws Exception {
-        JSONArray savedPosts = getSavedPostsJSON();
-        int savedItemIndex = (int) (Math.random() * savedPosts.length());
+        List<String> postIDs = getSavedPostIDs();
+        int savedItemIndex = (int) (Math.random() * postIDs.size());
         int startIndex = savedItemIndex;
         while (true) {
-            JSONObject savedItem = savedPosts.getJSONObject(savedItemIndex);
+            JSONObject savedItem = SavedItem.load(postIDs.get(savedItemIndex));
             int numberOfImages = SavedItem.numberOfImages(savedItem);
             String postID = SavedItem.postID(savedItem);
             int imageIndex = (int) (Math.random() * numberOfImages);
@@ -433,7 +429,7 @@ public class InstaClient {
                 }
                 imageIndex = (imageIndex + 1) % numberOfImages;
                 if (imageIndex == startingImageIndex) {
-                    savedItemIndex = (savedItemIndex + 1) % savedPosts.length();
+                    savedItemIndex = (savedItemIndex + 1) % postIDs.size();
                     if (savedItemIndex == startIndex) {
                         throw new Exception("No undeleted saved posts found");
                     }
@@ -542,30 +538,20 @@ public class InstaClient {
         } catch (Exception f) {
             Log.e(TAG, "getPostCodeToIDJSON: " + Log.getStackTraceString(f));
         }
-        JSONArray savedPosts = getSavedPostsJSON();
-        for (int i = 0; i < savedPosts.length(); i++) {
-            JSONObject node = savedPosts.getJSONObject(i).optJSONObject("node");
-            if (node != null) {
-                postCodeToID.put(node.optString("shortcode"), node.optString("id"));
-            }
-        }
         return postCodeToID;
     }
 
-    JSONArray getSavedPostsJSON() {
-        if (savedPostsJSON != null) return savedPostsJSON;
-        try {
-            String savedPosts = new String(Files.readAllBytes(Paths.get(filesDir, username, "saved_posts.json")));
-            savedPostsJSON = new JSONArray(savedPosts);
-        } catch (NoSuchFileException e) {
-            try {
-                savedPostsJSON = new JSONArray("[]");
-            } catch (Exception ignored) {
-            }
-        } catch (Exception f) {
-            Log.e(TAG, "getSavedPostsJSONFromDevice: " + Log.getStackTraceString(f));
+    List<String> getSavedPostIDs() {
+        if (savedPostIDs != null){
+            return savedPostIDs;
         }
-        return savedPostsJSON;
+        try {
+            List<String> paths = Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList());
+            return paths;
+        } catch (Exception e) {
+            Log.e(TAG, "savedItemFiles: " + Log.getStackTraceString(e));
+        }
+        return null;
     }
 
     static JSONObject getDeletedImages() {
@@ -675,18 +661,15 @@ public class InstaClient {
         try {
             Log.d(TAG, "getSavedPosts: begin");
             String max_id = null;
-            if (continueLast){
+            if (continueLast) {
                 max_id = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
                 Log.d(TAG, String.format("Continue failed sync from cursor, %s", max_id));
             }
-            HashSet<String> set = new HashSet<>();
-            JSONArray items = getSavedPostsJSON();
-            for (int i = 0; i < items.length(); i++) {
-                set.add(SavedItem.postID(items.getJSONObject(i)));
-            }
+            List<String> postIDs = getSavedPostIDs();
+            HashSet<String> set = new HashSet<>(postIDs);
             int repeatCount = 0;
             int repeatLimit = 5;
-            JSONArray newItems = new JSONArray();
+            int newCount = 0;
             boolean moreAvailable = true;
             while (moreAvailable) {
                 String url = "https://www.instagram.com/api/v1/feed/saved/posts/";
@@ -697,6 +680,8 @@ public class InstaClient {
                 JSONObject res = getJSONResponse(con);
                 moreAvailable = res.getBoolean("more_available");
                 JSONArray tmpItems = res.getJSONArray("items");
+                max_id = res.optString("next_max_id");
+                Log.d(TAG, String.format("fetched %d elements, next max_id is %s", tmpItems.length(), max_id));
                 boolean stop = false;
                 for (int i = 0; i < tmpItems.length(); i++) {
                     if (set.contains(SavedItem.postID(tmpItems.getJSONObject(i)))) {
@@ -706,21 +691,21 @@ public class InstaClient {
                             stop = true;
                             break;
                         }
-                    } else newItems.put(tmpItems.get(i));
+                    } else {
+                        JSONObject item = tmpItems.getJSONObject(i);
+                        String postID = SavedItem.postID(item);
+                        getSavedPostIDs().add(postID);
+                        Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
+                        newCount++;
+                    }
                 }
-                max_id = res.optString("next_max_id");
-                if (!max_id.isEmpty()){
+                if (!max_id.isEmpty()) {
                     spEditor.putString(SPKeys.LAST_SYNC_CURSOR, max_id);
                     spEditor.apply();
                 }
-                Log.d(TAG, String.format("fetched %d elements, next max_id is %s", tmpItems.length(), max_id));
                 if (stop) break;
             }
-            Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", items.length(), newItems.length()));
-            for (int i = newItems.length() - 1; i >= 0; i--) {
-                items.put(newItems.get(i));
-            }
-            Files.copy(new ByteArrayInputStream(items.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
+            Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", postIDs.size(), newCount));
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
@@ -840,17 +825,4 @@ public class InstaClient {
             Log.d(TAG, "Failed to set wallpaper " + Log.getStackTraceString(e));
         }
     }
-
-    static String toJSONArray(HashSet<String> set) {
-        StringBuilder sb = new StringBuilder("[\n");
-        Iterator<String> it = set.iterator();
-        while (it.hasNext()) {
-            sb.append("\t\"");
-            sb.append(it.next());
-            sb.append("\"" + (it.hasNext() ? "," : "") + "\n");
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-    // -------------------------------------------------------------
 }
