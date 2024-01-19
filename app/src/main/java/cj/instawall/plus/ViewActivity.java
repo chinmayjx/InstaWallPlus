@@ -263,7 +263,8 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     void onCreateTest(){
-//        instaClient.act_test();
+        if (instaClient != null)
+            instaClient.act_test();
     }
 
     @Override

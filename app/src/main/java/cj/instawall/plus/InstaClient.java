@@ -242,7 +242,7 @@ public class InstaClient {
             throw new Exception("no auth info file found, created one");
         }
         authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
-//        Log.d(TAG, "authInfo: " + authInfo.toString(2));
+        // Log.d(TAG, "authInfo: " + authInfo.toString(2));
 
         this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.lifoExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
@@ -678,37 +678,65 @@ public class InstaClient {
     }
 
     private void getSavedPosts(boolean continueLast) {
-
-        HashSet<String> set = new HashSet<>();
-        JSONArray edges = getSavedPostsJSON();
-        JSONArray newEdges = new JSONArray();
         try {
-            for (int i = 0; i < edges.length(); i++) {
-                set.add(SavedItem.postID(edges.getJSONObject(i)));
+            Log.d(TAG, "getSavedPosts: begin");
+            String max_id = null;
+            JSONArray items = new JSONArray();
+            JSONArray newItems = new JSONArray();
+            boolean moreAvailable = true;
+            while (moreAvailable){
+                String url = "https://www.instagram.com/api/v1/feed/saved/posts/";
+                if (max_id != null){
+                    url += "?max_id=" + max_id;
+                }
+                HttpURLConnection con = getConnection(url);
+                JSONObject res = getJSONResponse(con);
+                moreAvailable = res.getBoolean("more_available");
+                JSONArray tmpItems = res.getJSONArray("items");
+                for (int i=0; i < tmpItems.length(); i++){
+                    newItems.put(tmpItems.get(i));
+                }
+                max_id = res.optString("next_max_id");
+                Log.d(TAG, String.format("got %d new posts, next max_id is %s", tmpItems.length(), max_id));
             }
-            JSONObject savedMedia = null;
-            if (continueLast) {
-                savedMedia = new JSONObject("{\"edges\":[],\"count\": -1,\"page_info\": {\n" +
-                        "                    \"has_next_page\": true,\n" +
-                        "                    \"end_cursor\": \"" + sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, "") + "\"\n" +
-                        "                }}");
-            } else {
-                JSONObject userInfo = getUserInfo();
-                savedMedia = userInfo.getJSONObject("data")
-                        .getJSONObject("user")
-                        .getJSONObject("edge_saved_media");
+            Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", items.length(), newItems.length()));
+            for (int i=newItems.length() - 1; i >= 0; i--){
+                items.put(newItems.get(i));
             }
-
-            Log.d(TAG, "User has " + savedMedia.getInt("count") + " saved posts");
-            getAllSavedPosts(newEdges, savedMedia, set, 0, 5);
-            Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts, found " + (newEdges.length()) + " new");
-            for (int i = newEdges.length() - 1; i >= 0; i--) {
-                savedPostsJSON.put(newEdges.getJSONObject(i));
-            }
-            Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new ByteArrayInputStream(items.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
+//        HashSet<String> set = new HashSet<>();
+//        JSONArray edges = getSavedPostsJSON();
+//        JSONArray newEdges = new JSONArray();
+//        try {
+//            for (int i = 0; i < edges.length(); i++) {
+//                set.add(SavedItem.postID(edges.getJSONObject(i)));
+//            }
+//            JSONObject savedMedia = null;
+//            if (continueLast) {
+//                savedMedia = new JSONObject("{\"edges\":[],\"count\": -1,\"page_info\": {\n" +
+//                        "                    \"has_next_page\": true,\n" +
+//                        "                    \"end_cursor\": \"" + sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, "") + "\"\n" +
+//                        "                }}");
+//            } else {
+//                JSONObject userInfo = getUserInfo();
+//                savedMedia = userInfo.getJSONObject("data")
+//                        .getJSONObject("user")
+//                        .getJSONObject("edge_saved_media");
+//            }
+//
+//            Log.d(TAG, "User has " + savedMedia.getInt("count") + " saved posts");
+//            getAllSavedPosts(newEdges, savedMedia, set, 0, 5);
+//            Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts, found " + (newEdges.length()) + " new");
+//            for (int i = newEdges.length() - 1; i >= 0; i--) {
+//                savedPostsJSON.put(newEdges.getJSONObject(i));
+//            }
+//            Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
+//        } catch (Exception e) {
+//            Log.e(TAG, Log.getStackTraceString(e));
+//        }
     }
 
     private void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
