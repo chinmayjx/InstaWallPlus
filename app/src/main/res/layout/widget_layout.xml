@@ -8,6 +8,6 @@
     <Button
         android:id="@+id/wid_btn"
         android:background="@drawable/ripple_bg"
-        android:layout_width="50dp"
-        android:layout_height="50dp" />
+        android:layout_width="45dp"
+        android:layout_height="45dp" />
 </LinearLayout>

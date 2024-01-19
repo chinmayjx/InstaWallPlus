@@ -10,7 +10,6 @@ import android.graphics.Paint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
-import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -427,10 +426,10 @@ public class InstaClient {
             String postID = SavedItem.postID(savedItem);
             int imageIndex = (int) (Math.random() * numberOfImages);
             int startingImageIndex = imageIndex;
-            while (true){
+            while (true) {
                 JSONObject carouselItem = SavedItem.itemAtIndex(savedItem, imageIndex);
                 String imageID = carouselItem.getString("pk");
-                if (!getDeletedImages().has(imageID)){
+                if (!getDeletedImages().has(imageID)) {
                     String fileName = saveImageFromObject(carouselItem, postID);
                     return Paths.get(imagePath, fileName);
                 }
@@ -690,7 +689,17 @@ public class InstaClient {
         try {
             Log.d(TAG, "getSavedPosts: begin");
             String max_id = null;
-            JSONArray items = new JSONArray();
+            if (continueLast){
+                max_id = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
+                Log.d(TAG, String.format("Continue failed sync from cursor, %s", max_id));
+            }
+            HashSet<String> set = new HashSet<>();
+            JSONArray items = getSavedPostsJSON();
+            for (int i = 0; i < items.length(); i++) {
+                set.add(SavedItem.postID(items.getJSONObject(i)));
+            }
+            int repeatCount = 0;
+            int repeatLimit = 5;
             JSONArray newItems = new JSONArray();
             boolean moreAvailable = true;
             while (moreAvailable) {
@@ -702,11 +711,24 @@ public class InstaClient {
                 JSONObject res = getJSONResponse(con);
                 moreAvailable = res.getBoolean("more_available");
                 JSONArray tmpItems = res.getJSONArray("items");
+                boolean stop = false;
                 for (int i = 0; i < tmpItems.length(); i++) {
-                    newItems.put(tmpItems.get(i));
+                    if (set.contains(SavedItem.postID(tmpItems.getJSONObject(i)))) {
+                        repeatCount++;
+                        if (repeatCount == repeatLimit) {
+                            Log.d(TAG, "repeat limit hit, sync complete");
+                            stop = true;
+                            break;
+                        }
+                    } else newItems.put(tmpItems.get(i));
                 }
                 max_id = res.optString("next_max_id");
-                Log.d(TAG, String.format("got %d new posts, next max_id is %s", tmpItems.length(), max_id));
+                if (!max_id.isEmpty()){
+                    spEditor.putString(SPKeys.LAST_SYNC_CURSOR, max_id);
+                    spEditor.apply();
+                }
+                Log.d(TAG, String.format("fetched %d elements, next max_id is %s", tmpItems.length(), max_id));
+                if (stop) break;
             }
             Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", items.length(), newItems.length()));
             for (int i = newItems.length() - 1; i >= 0; i--) {
@@ -716,36 +738,6 @@ public class InstaClient {
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
         }
-//        HashSet<String> set = new HashSet<>();
-//        JSONArray edges = getSavedPostsJSON();
-//        JSONArray newEdges = new JSONArray();
-//        try {
-//            for (int i = 0; i < edges.length(); i++) {
-//                set.add(SavedItem.postID(edges.getJSONObject(i)));
-//            }
-//            JSONObject savedMedia = null;
-//            if (continueLast) {
-//                savedMedia = new JSONObject("{\"edges\":[],\"count\": -1,\"page_info\": {\n" +
-//                        "                    \"has_next_page\": true,\n" +
-//                        "                    \"end_cursor\": \"" + sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, "") + "\"\n" +
-//                        "                }}");
-//            } else {
-//                JSONObject userInfo = getUserInfo();
-//                savedMedia = userInfo.getJSONObject("data")
-//                        .getJSONObject("user")
-//                        .getJSONObject("edge_saved_media");
-//            }
-//
-//            Log.d(TAG, "User has " + savedMedia.getInt("count") + " saved posts");
-//            getAllSavedPosts(newEdges, savedMedia, set, 0, 5);
-//            Log.d(TAG, "Saved posts fetch complete: " + edges.length() + " posts, found " + (newEdges.length()) + " new");
-//            for (int i = newEdges.length() - 1; i >= 0; i--) {
-//                savedPostsJSON.put(newEdges.getJSONObject(i));
-//            }
-//            Files.copy(new ByteArrayInputStream(edges.toString(2).getBytes()), Paths.get(filesDir, username, "saved_posts.json"), StandardCopyOption.REPLACE_EXISTING);
-//        } catch (Exception e) {
-//            Log.e(TAG, Log.getStackTraceString(e));
-//        }
     }
 
     private void getAllSavedPosts(JSONArray edges, JSONObject savedMedia, HashSet<String> set,
