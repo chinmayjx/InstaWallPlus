@@ -237,6 +237,7 @@ public class ViewActivity extends AppCompatActivity {
                         menuAdapter.notifyDataSetChanged();
                         break;
                     case Test:
+                        onButtonTest();
                         break;
                     case New_Login:
                         CookieManager.getInstance().removeAllCookies(null);
@@ -246,11 +247,7 @@ public class ViewActivity extends AppCompatActivity {
                         wv.loadUrl("https://www.instagram.com");
                         break;
                     case Simulate_Loading:
-                        if (ImageViewer.simulateLoading) {
-                            ImageViewer.simulateLoading = false;
-                        } else {
-                            ImageViewer.simulateLoading = true;
-                        }
+                        ImageViewer.simulateLoading = !ImageViewer.simulateLoading;
                         menuAdapter.notifyDataSetChanged();
                         break;
                 }
@@ -265,6 +262,10 @@ public class ViewActivity extends AppCompatActivity {
     void onCreateTest(){
         if (instaClient != null)
             instaClient.act_test();
+    }
+
+    void onButtonTest(){
+        instaClient.act_test();
     }
 
     @Override

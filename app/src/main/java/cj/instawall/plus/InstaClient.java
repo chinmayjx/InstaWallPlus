@@ -128,6 +128,19 @@ public class InstaClient {
             }
             return null;
         }
+
+        public static JSONObject updateWithPostInfo(JSONObject postInfo) {
+            try {
+                String postID = PostInfo.postID(postInfo);
+                JSONObject newSavedItem = new JSONObject();
+                newSavedItem.put("media", postInfo.getJSONArray("items").get(0));
+                Files.copy(new ByteArrayInputStream(newSavedItem.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
+                return newSavedItem;
+            } catch (Exception e) {
+                Log.e(TAG, "updateWithPostInfo: " + e);
+                return null;
+            }
+        }
     }
 
     // auth utils -----------------------------------
@@ -324,7 +337,7 @@ public class InstaClient {
 
     private void test() {
         try {
-            Log.d(TAG, "test: " + getSavedPostIDs());
+            Log.d(TAG, "test: ");
         } catch (Exception e) {
             Log.d(TAG, "InstaClient, test: " + Log.getStackTraceString(e));
         }
@@ -414,6 +427,7 @@ public class InstaClient {
         List<String> postIDs = getSavedPostIDs();
         int savedItemIndex = (int) (Math.random() * postIDs.size());
         int startIndex = savedItemIndex;
+        int retryCount = 0;
         while (true) {
             JSONObject savedItem = SavedItem.load(postIDs.get(savedItemIndex));
             int numberOfImages = SavedItem.numberOfImages(savedItem);
@@ -424,8 +438,17 @@ public class InstaClient {
                 JSONObject carouselItem = SavedItem.itemAtIndex(savedItem, imageIndex);
                 String imageID = carouselItem.getString("pk");
                 if (!getDeletedImages().has(imageID)) {
-                    String fileName = saveImageFromObject(carouselItem, postID);
-                    return Paths.get(imagePath, fileName);
+                    try {
+                        String fileName = saveImageFromObject(carouselItem, postID);
+                        return Paths.get(imagePath, fileName);
+                    } catch (FileNotFoundException e) {
+                        if (retryCount == 1) throw new Exception("Not able to refresh post");
+                        Log.d(TAG, "getRandomImage: URL expired, refreshing...");
+                        JSONObject postInfo = getPostInfo(postID);
+                        SavedItem.updateWithPostInfo(postInfo);
+                        retryCount += 1;
+                        break;
+                    }
                 }
                 imageIndex = (imageIndex + 1) % numberOfImages;
                 if (imageIndex == startingImageIndex) {
@@ -542,7 +565,7 @@ public class InstaClient {
     }
 
     List<String> getSavedPostIDs() {
-        if (savedPostIDs != null){
+        if (savedPostIDs != null) {
             return savedPostIDs;
         }
         try {
@@ -551,7 +574,7 @@ public class InstaClient {
         } catch (Exception e) {
             Log.e(TAG, "savedItemFiles: " + Log.getStackTraceString(e));
         }
-        return null;
+        return new ArrayList<>();
     }
 
     static JSONObject getDeletedImages() {
