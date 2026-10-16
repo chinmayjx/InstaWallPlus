@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -58,6 +59,8 @@ public class InstaClient {
     public static final String DEFAULT_APP_ID = "936619743392459";
     ThreadPoolExecutor executor;
     ThreadPoolExecutor lifoExecutor;
+    // syncing is slow on purpose, keep it off the executor that loads images
+    ThreadPoolExecutor syncExecutor;
     JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
@@ -321,6 +324,7 @@ public class InstaClient {
 
         this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.lifoExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
+        this.syncExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.context = context;
         filesDir = context.getExternalFilesDir(null).toString();
 
@@ -339,11 +343,11 @@ public class InstaClient {
     }
 
     public void act_continueLastSync() {
-        executor.execute(() -> getSavedPosts(true));
+        syncExecutor.execute(() -> getSavedPosts(true));
     }
 
     public void act_getSavedPosts() {
-        executor.execute(() -> getSavedPosts(false));
+        syncExecutor.execute(() -> getSavedPosts(false));
     }
 
     public void act_setWallpaperFromCode(String code) {
@@ -619,7 +623,7 @@ public class InstaClient {
             return savedPostIDs;
         }
         try {
-            savedPostIDs = Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList());
+            savedPostIDs = new CopyOnWriteArrayList<>(Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList()));
             return savedPostIDs;
         } catch (Exception e) {
             Log.e(TAG, "savedItemFiles: " + Log.getStackTraceString(e));
@@ -730,61 +734,123 @@ public class InstaClient {
         return newFileName;
     }
 
+    // pacing for the saved feed, instagram rate limits accounts that page through it too fast
+    static final int PAGE_DELAY_MIN_MS = 6_000, PAGE_DELAY_MAX_MS = 12_000;
+    static final int LONG_PAUSE_EVERY_PAGES = 25, LONG_PAUSE_MIN_MS = 60_000, LONG_PAUSE_MAX_MS = 120_000;
+    static final int MAX_RETRIES = 4, FIRST_RETRY_DELAY_MS = 120_000;
+
+    enum SyncResult {CAUGHT_UP, END_OF_FEED, FAILED}
+
+    // Synchronize: fetch new saves from the top until we reach posts we already have, then finish
+    // an interrupted sync (if any) from where it stopped. Continue_Failed_Sync only does the latter.
     private void getSavedPosts(boolean continueLast) {
+        String pending = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
+        Log.d(TAG, "getSavedPosts: begin, pending cursor: " + (pending != null));
+        if (!continueLast) {
+            // with an interrupted sync pending, the cursor belongs to it; don't overwrite it from the top
+            SyncResult r = syncSavedPosts(null, pending == null);
+            if (r == SyncResult.FAILED) return;
+            if (pending == null) {
+                clearSyncCursor();
+                return;
+            }
+        }
+        if (pending == null) {
+            Log.d(TAG, "getSavedPosts: nothing to continue");
+            return;
+        }
+        Log.d(TAG, "getSavedPosts: continuing interrupted sync");
+        if (syncSavedPosts(pending, true) != SyncResult.FAILED) clearSyncCursor();
+    }
+
+    private void clearSyncCursor() {
+        spEditor.remove(SPKeys.LAST_SYNC_CURSOR);
+        spEditor.commit();
+    }
+
+    // pages through the saved feed from startCursor (null = newest). With saveCursor, the cursor of
+    // every finished page is stored so a failed sync can be continued.
+    private SyncResult syncSavedPosts(String startCursor, boolean saveCursor) {
+        String max_id = startCursor;
+        HashSet<String> known = new HashSet<>(getSavedPostIDs());
+        int repeatCount = 0;
+        int repeatLimit = 5;
+        int newCount = 0;
+        int pages = 0;
         try {
-            Log.d(TAG, "getSavedPosts: begin");
-            String max_id = null;
-            if (continueLast) {
-                max_id = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
-                Log.d(TAG, String.format("Continue failed sync from cursor, %s", max_id));
-            }
-            List<String> postIDs = getSavedPostIDs();
-            HashSet<String> set = new HashSet<>(postIDs);
-            int repeatCount = 0;
-            int repeatLimit = 5;
-            int newCount = 0;
-            boolean moreAvailable = true;
-            while (moreAvailable) {
+            while (true) {
                 String url = "https://www.instagram.com/api/v1/feed/saved/posts/";
-                if (max_id != null) {
-                    url += "?max_id=" + max_id;
-                }
-                HttpURLConnection con = getConnection(url);
-                JSONObject res = getJSONResponse(con);
-                moreAvailable = res.getBoolean("more_available");
-                JSONArray tmpItems = res.getJSONArray("items");
+                if (max_id != null) url += "?max_id=" + max_id;
+                JSONObject res = getJSONWithRetry(url);
+                pages++;
+                JSONArray items = res.getJSONArray("items");
+                boolean moreAvailable = res.optBoolean("more_available");
                 max_id = res.optString("next_max_id");
-                Log.d(TAG, String.format("fetched %d elements, next max_id is %s", tmpItems.length(), max_id));
-                boolean stop = false;
-                for (int i = 0; i < tmpItems.length(); i++) {
-                    if (set.contains(SavedItem.postID(tmpItems.getJSONObject(i)))) {
-                        repeatCount++;
-                        if (repeatCount == repeatLimit) {
-                            Log.d(TAG, "repeat limit hit, sync complete");
-                            stop = true;
-                            break;
-                        }
-                    } else {
-                        JSONObject item = tmpItems.getJSONObject(i);
-                        String postID = SavedItem.postID(item);
-                        getSavedPostIDs().add(postID);
-                        Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
-                        newCount++;
+                boolean caughtUp = false;
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.getJSONObject(i);
+                    String postID = SavedItem.postID(item);
+                    if (known.contains(postID)) {
+                        if (++repeatCount >= repeatLimit) caughtUp = true;
+                        continue;
                     }
+                    known.add(postID);
+                    getSavedPostIDs().add(postID);
+                    Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
+                    newCount++;
                 }
-                if (!max_id.isEmpty()) {
+                Log.d(TAG, String.format("sync page %d: %d items, %d new so far, total %d", pages, items.length(), newCount, getSavedPostIDs().size()));
+                if (caughtUp) {
+                    Log.d(TAG, "sync: reached already synced posts");
+                    return SyncResult.CAUGHT_UP;
+                }
+                if (!moreAvailable || max_id.isEmpty()) {
+                    Log.d(TAG, "sync: reached the end of saved posts");
+                    return SyncResult.END_OF_FEED;
+                }
+                if (saveCursor) {
                     spEditor.putString(SPKeys.LAST_SYNC_CURSOR, max_id);
-                    spEditor.apply();
+                    spEditor.commit();
                 }
-                if (stop) break;
-                Thread.sleep(1500);
+                long delay = randomBetween(PAGE_DELAY_MIN_MS, PAGE_DELAY_MAX_MS);
+                if (pages % LONG_PAUSE_EVERY_PAGES == 0) {
+                    delay = randomBetween(LONG_PAUSE_MIN_MS, LONG_PAUSE_MAX_MS);
+                    Log.d(TAG, "sync: taking a " + delay / 1000 + "s break");
+                }
+                Thread.sleep(delay);
             }
-            Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", postIDs.size(), newCount));
         } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
+            Log.e(TAG, "sync failed after " + pages + " pages, " + newCount + " new posts. Use Continue Failed Sync to resume. " + Log.getStackTraceString(e));
+            return SyncResult.FAILED;
         }
     }
 
+    // retries rate limits, server errors and network errors with exponential backoff
+    private JSONObject getJSONWithRetry(String url) throws Exception {
+        long rateLimitDelay = FIRST_RETRY_DELAY_MS;
+        long networkDelay = 30_000;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return getJSONResponse(getConnection(url));
+            } catch (SessionExpiredException | FileNotFoundException e) {
+                throw e;
+            } catch (HttpStatusException e) {
+                if ((e.code != 429 && e.code < 500) || attempt >= MAX_RETRIES) throw e;
+                Log.w(TAG, "HTTP " + e.code + ", waiting " + rateLimitDelay / 1000 + "s before retrying");
+                Thread.sleep(rateLimitDelay);
+                rateLimitDelay *= 2;
+            } catch (IOException e) {
+                if (attempt >= MAX_RETRIES) throw e;
+                Log.w(TAG, "network error (" + e + "), waiting " + networkDelay / 1000 + "s before retrying");
+                Thread.sleep(networkDelay);
+                networkDelay *= 2;
+            }
+        }
+    }
+
+    static long randomBetween(long min, long max) {
+        return min + (long) (Math.random() * (max - min));
+    }
 
     private String getPostCodeToID(String code) {
         String postID = shortcodeToMediaID(code);
@@ -834,10 +900,25 @@ public class InstaClient {
             Log.e(TAG, "HTTP " + code + " from " + con.getURL() + ": " + body);
             if (code == 404) throw new FileNotFoundException(con.getURL().toString());
             if ((code >= 300 && code < 400) || body.contains("login_required"))
-                throw new IOException("Instagram session expired, open Instagram from the menu and log in again");
-            throw new IOException("HTTP " + code + " from " + con.getURL());
+                throw new SessionExpiredException();
+            throw new HttpStatusException(code, "HTTP " + code + " from " + con.getURL());
         }
         return new JSONObject(readAll(con.getInputStream()));
+    }
+
+    static class SessionExpiredException extends IOException {
+        SessionExpiredException() {
+            super("Instagram session expired, open Instagram from the menu and log in again");
+        }
+    }
+
+    static class HttpStatusException extends IOException {
+        final int code;
+
+        HttpStatusException(int code, String message) {
+            super(message);
+            this.code = code;
+        }
     }
 
     static String readAll(InputStream in) throws IOException {
