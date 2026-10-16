@@ -5,6 +5,7 @@ import java.util.Locale;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.chip.Chip;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.appbar.MaterialToolbar;
 import android.widget.TextView;
 import android.widget.PopupMenu;
@@ -42,7 +43,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Scanner;
 
-public class ViewActivity extends AppCompatActivity {
+public class ViewActivity extends AppCompatActivity implements InstaClient.SyncListener {
     public static final String TAG = "CJ";
     public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
     // the grid's datasets that have something to show, in chip order
@@ -64,7 +65,12 @@ public class ViewActivity extends AppCompatActivity {
     String interceptor;
     BiometricAuth biometricAuth;
     Handler handler;
-    FrameLayout wvHolder;
+    View wvHolder;
+    MaterialToolbar wvToolbar;
+    View syncBanner;
+    TextView syncStatus;
+    // set while logging into another account, the browser closes once that worked
+    boolean addingAccount;
     InstaWebView wv;
     SharedPreferences sharedPreferences;
     SharedPreferences.Editor spEditor;
@@ -86,17 +92,14 @@ public class ViewActivity extends AppCompatActivity {
         fab = findViewById(R.id.grid_fab);
         rv = findViewById(R.id.recycler_grid);
         wvHolder = findViewById(R.id.wvHolder);
+        wvToolbar = findViewById(R.id.wv_toolbar);
+        wvToolbar.setNavigationOnClickListener(v -> hideWebView());
+        syncBanner = findViewById(R.id.sync_banner);
+        syncStatus = findViewById(R.id.sync_status);
         datasetChips = findViewById(R.id.dataset_chips);
 
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (wvHolder.getVisibility() == View.VISIBLE) hideWebView();
-            }
-        });
-
         wv = new InstaWebView(this, this::onLoggedIn, interceptor);
-        wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ((FrameLayout) findViewById(R.id.wv_container)).addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     void onLoggedIn() {
@@ -104,7 +107,19 @@ public class ViewActivity extends AppCompatActivity {
         if (mainService != null) mainService.createInstaClient();
         Toast.makeText(this, "Logged in as " + InstaClient.username, Toast.LENGTH_SHORT).show();
         // the grid and menu were set up without a client, start over with one
-        if (firstLogin) recreate();
+        if (firstLogin) {
+            recreate();
+            return;
+        }
+        // another account: show it everywhere without a restart
+        setupAccountSwitcher();
+        updateHeader();
+        selectDataset(RVAdapter.Dataset.Random);
+        rvAdapter.setCurrentDataset(RVAdapter.Dataset.Random.ordinal());
+        if (addingAccount) {
+            addingAccount = false;
+            hideWebView();
+        }
     }
 
     void setupRVAdapter() {
@@ -263,6 +278,7 @@ public class ViewActivity extends AppCompatActivity {
                 CookieManager.getInstance().removeAllCookies(null);
                 CookieManager.getInstance().flush();
                 wv.resetLogin();
+                addingAccount = true;
                 showWebView();
                 drawerLayout.close();
                 wv.loadUrl("https://www.instagram.com");
@@ -270,11 +286,11 @@ public class ViewActivity extends AppCompatActivity {
                 Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
                 openInstagram();
             } else if (id == R.id.nav_sync) {
-                Toast.makeText(this, "Syncing saved posts", Toast.LENGTH_SHORT).show();
+                onSyncProgress("Starting sync");
                 instaClient.act_getSavedPosts();
                 drawerLayout.close();
             } else if (id == R.id.nav_continue_sync) {
-                Toast.makeText(this, "Continuing the last sync", Toast.LENGTH_SHORT).show();
+                onSyncProgress("Starting sync");
                 instaClient.act_continueLastSync();
                 drawerLayout.close();
             } else if (id == R.id.nav_random_wallpaper) {
@@ -383,15 +399,46 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     void showWebView() {
-        fab.setImageDrawable(AppCompatResources.getDrawable(this, android.R.drawable.ic_menu_close_clear_cancel));
         wvHolder.setVisibility(View.VISIBLE);
-        fab.setVisibility(View.VISIBLE);
+        drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
     }
 
     void hideWebView() {
-        fab.setImageDrawable(AppCompatResources.getDrawable(this, R.drawable.check));
         wvHolder.setVisibility(View.INVISIBLE);
-        fab.setVisibility(View.INVISIBLE);
+        drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+    }
+
+    // sync progress ---------------------------------------------
+    @Override
+    protected void onResume() {
+        super.onResume();
+        InstaClient.syncListener = this;
+        if (InstaClient.syncing) onSyncProgress(InstaClient.syncStatus);
+        else syncBanner.setVisibility(View.GONE);
+    }
+
+    @Override
+    protected void onPause() {
+        if (InstaClient.syncListener == this) InstaClient.syncListener = null;
+        super.onPause();
+    }
+
+    @Override
+    public void onSyncProgress(String status) {
+        handler.post(() -> {
+            syncBanner.setVisibility(View.VISIBLE);
+            syncStatus.setText(status == null ? "Syncing saved posts" : status);
+            updateHeader();
+        });
+    }
+
+    @Override
+    public void onSyncDone(String message) {
+        handler.post(() -> {
+            syncBanner.setVisibility(View.GONE);
+            updateHeader();
+            Snackbar.make(findViewById(R.id.recycler_grid), message, Snackbar.LENGTH_LONG).show();
+        });
     }
 
     @Override

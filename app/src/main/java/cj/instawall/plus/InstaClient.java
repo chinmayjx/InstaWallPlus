@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
@@ -746,38 +747,88 @@ public class InstaClient {
 
     enum SyncResult {CAUGHT_UP, END_OF_FEED, FAILED}
 
+    // progress of a running sync, for the UI
+    public interface SyncListener {
+        void onSyncProgress(String status);
+
+        void onSyncDone(String message);
+    }
+
+    static volatile SyncListener syncListener;
+    static volatile boolean syncing;
+    static volatile String syncStatus;
+    private int syncNewPosts;
+
+    private void reportSync(String status) {
+        syncStatus = status;
+        SyncListener l = syncListener;
+        if (l != null) l.onSyncProgress(status);
+    }
+
+    // the interrupted sync's cursor is per account
+    private String cursorKey(String user) {
+        return SPKeys.LAST_SYNC_CURSOR + ":" + user;
+    }
+
     // Synchronize: fetch new saves from the top until we reach posts we already have, then finish
     // an interrupted sync (if any) from where it stopped. Continue_Failed_Sync only does the latter.
     private void getSavedPosts(boolean continueLast) {
-        String pending = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
-        Log.d(TAG, "getSavedPosts: begin, pending cursor: " + (pending != null));
-        if (!continueLast) {
-            // with an interrupted sync pending, the cursor belongs to it; don't overwrite it from the top
-            SyncResult r = syncSavedPosts(null, pending == null);
-            if (r == SyncResult.FAILED) return;
+        // the account can be switched while syncing, stick to the one we started with
+        String user = username;
+        String postDir = savedPostPath;
+        List<String> ids = getSavedPostIDs();
+        String key = cursorKey(user);
+        // cursors used to be stored for the whole app, it belongs to whoever is logged in now
+        String legacy = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
+        if (legacy != null) {
+            if (!sharedPreferences.contains(key)) spEditor.putString(key, legacy);
+            spEditor.remove(SPKeys.LAST_SYNC_CURSOR);
+            spEditor.commit();
+        }
+        String pending = sharedPreferences.getString(key, null);
+        Log.d(TAG, "getSavedPosts: begin for " + user + ", pending cursor: " + (pending != null));
+        syncing = true;
+        syncNewPosts = 0;
+        String result = null;
+        try {
+            if (!continueLast) {
+                reportSync("Checking for new saves");
+                // with an interrupted sync pending, the cursor belongs to it; don't overwrite it from the top
+                SyncResult r = syncSavedPosts(null, pending == null ? key : null, postDir, ids);
+                if (r == SyncResult.FAILED) return;
+                if (pending == null) {
+                    clearSyncCursor(key);
+                    return;
+                }
+            }
             if (pending == null) {
-                clearSyncCursor();
+                Log.d(TAG, "getSavedPosts: nothing to continue");
+                result = "No interrupted sync to continue";
                 return;
             }
+            Log.d(TAG, "getSavedPosts: continuing interrupted sync");
+            reportSync("Continuing where the last sync stopped");
+            if (syncSavedPosts(pending, key, postDir, ids) != SyncResult.FAILED) clearSyncCursor(key);
+        } finally {
+            syncing = false;
+            if (result == null) result = syncStatus != null && syncStatus.startsWith("Sync stopped")
+                    ? syncStatus
+                    : String.format(Locale.US, "Sync complete, %,d new posts", syncNewPosts);
+            SyncListener l = syncListener;
+            if (l != null) l.onSyncDone(result);
         }
-        if (pending == null) {
-            Log.d(TAG, "getSavedPosts: nothing to continue");
-            return;
-        }
-        Log.d(TAG, "getSavedPosts: continuing interrupted sync");
-        if (syncSavedPosts(pending, true) != SyncResult.FAILED) clearSyncCursor();
     }
 
-    private void clearSyncCursor() {
-        spEditor.remove(SPKeys.LAST_SYNC_CURSOR);
+    private void clearSyncCursor(String key) {
+        spEditor.remove(key);
         spEditor.commit();
     }
 
-    // pages through the saved feed from startCursor (null = newest). With saveCursor, the cursor of
+    // pages through the saved feed from startCursor (null = newest). With a cursorKey, the cursor of
     // every finished page is stored so a failed sync can be continued.
-    private SyncResult syncSavedPosts(String startCursor, boolean saveCursor) {
+    private SyncResult syncSavedPosts(String startCursor, String cursorKey, String postDir, List<String> ids) {
         String max_id = startCursor;
-        HashSet<String> known = new HashSet<>(getSavedPostIDs());
+        HashSet<String> known = new HashSet<>(ids);
         int repeatCount = 0;
         int repeatLimit = 5;
         int newCount = 0;
@@ -800,11 +851,13 @@ public class InstaClient {
                         continue;
                     }
                     known.add(postID);
-                    getSavedPostIDs().add(postID);
-                    Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
+                    ids.add(postID);
+                    Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(postDir, postID), StandardCopyOption.REPLACE_EXISTING);
                     newCount++;
+                    syncNewPosts++;
                 }
-                Log.d(TAG, String.format("sync page %d: %d items, %d new so far, total %d", pages, items.length(), newCount, getSavedPostIDs().size()));
+                Log.d(TAG, String.format("sync page %d: %d items, %d new so far, total %d", pages, items.length(), newCount, ids.size()));
+                reportSync(String.format(Locale.US, "%,d posts synced, %,d new", ids.size(), syncNewPosts));
                 if (caughtUp) {
                     Log.d(TAG, "sync: reached already synced posts");
                     return SyncResult.CAUGHT_UP;
@@ -813,19 +866,22 @@ public class InstaClient {
                     Log.d(TAG, "sync: reached the end of saved posts");
                     return SyncResult.END_OF_FEED;
                 }
-                if (saveCursor) {
-                    spEditor.putString(SPKeys.LAST_SYNC_CURSOR, max_id);
+                if (cursorKey != null) {
+                    spEditor.putString(cursorKey, max_id);
                     spEditor.commit();
                 }
                 long delay = randomBetween(PAGE_DELAY_MIN_MS, PAGE_DELAY_MAX_MS);
                 if (pages % LONG_PAUSE_EVERY_PAGES == 0) {
                     delay = randomBetween(LONG_PAUSE_MIN_MS, LONG_PAUSE_MAX_MS);
                     Log.d(TAG, "sync: taking a " + delay / 1000 + "s break");
+                    reportSync(String.format(Locale.US, "%,d posts synced, %,d new · short break (%ds) to stay under rate limits", ids.size(), syncNewPosts, delay / 1000));
                 }
                 Thread.sleep(delay);
             }
         } catch (Exception e) {
             Log.e(TAG, "sync failed after " + pages + " pages, " + newCount + " new posts. Use Continue Failed Sync to resume. " + Log.getStackTraceString(e));
+            String reason = e instanceof SessionExpiredException ? "Instagram session expired, log in again" : e.getMessage();
+            reportSync("Sync stopped: " + reason + ". Continue it from the menu.");
             return SyncResult.FAILED;
         }
     }
@@ -842,11 +898,13 @@ public class InstaClient {
             } catch (HttpStatusException e) {
                 if ((e.code != 429 && e.code < 500) || attempt >= MAX_RETRIES) throw e;
                 Log.w(TAG, "HTTP " + e.code + ", waiting " + rateLimitDelay / 1000 + "s before retrying");
+                reportSync((e.code == 429 ? "Instagram is rate limiting" : "Instagram error " + e.code) + ", retrying in " + rateLimitDelay / 60_000 + " min");
                 Thread.sleep(rateLimitDelay);
                 rateLimitDelay *= 2;
             } catch (IOException e) {
                 if (attempt >= MAX_RETRIES) throw e;
                 Log.w(TAG, "network error (" + e + "), waiting " + networkDelay / 1000 + "s before retrying");
+                reportSync("Network problem, retrying in " + networkDelay / 1000 + "s");
                 Thread.sleep(networkDelay);
                 networkDelay *= 2;
             }
