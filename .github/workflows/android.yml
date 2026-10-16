@@ -1,6 +1,6 @@
 name: Android
 
-# Pull requests: build the APK to check the change compiles.
+# Pull requests: build a signed APK and attach it to the run, to try a change before merging.
 # Merges to master: build a signed release APK and publish it as a GitHub release.
 on:
   pull_request:
@@ -24,19 +24,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        if: github.event_name == 'pull_request'
-        run: ./gradlew assembleDebug
-
-      - name: Upload debug APK
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: InstaWallPlus-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Build signed release APK
-        if: github.event_name != 'pull_request'
+      # every APK is signed with the same key and gets a higher versionCode than the last one,
+      # so any build (PR or release) installs over whatever is on the phone
+      - name: Build signed APK
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -48,6 +38,13 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           ./gradlew assembleRelease -PversionCode=$VERSION_CODE
           cp app/build/outputs/apk/release/app-release.apk "InstaWallPlus-v$VERSION_CODE.apk"
+
+      - name: Upload PR APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InstaWallPlus-v${{ env.VERSION_CODE }}-apk
+          path: InstaWallPlus-v${{ env.VERSION_CODE }}.apk
 
       - name: Publish release
         if: github.event_name != 'pull_request'
