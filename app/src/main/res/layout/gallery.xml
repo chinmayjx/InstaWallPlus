@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- full screen photo viewer over the grid -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/gallery"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clickable="true"
+    android:visibility="gone">
+
+    <View
+        android:id="@+id/gallery_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/black" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/gallery_pager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/gallery_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@drawable/scrim_top"
+        android:minHeight="?attr/actionBarSize"
+        android:paddingBottom="16dp"
+        app:navigationContentDescription="Close"
+        app:navigationIcon="@drawable/ic_close"
+        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall"
+        app:subtitleTextColor="@color/iw_on_surface_dim"
+        app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+    <LinearLayout
+        android:id="@+id/gallery_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/scrim_bottom"
+        android:orientation="vertical"
+        android:paddingTop="28dp"
+        android:paddingBottom="8dp">
+
+        <!-- the other photos of a carousel / gallery post -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/gallery_strip"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginBottom="6dp"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/gallery_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal" />
+    </LinearLayout>
+</FrameLayout>

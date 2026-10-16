@@ -49,7 +49,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     Spinner accountSwitcher;
     ChipGroup datasetChips;
     RVAdapter rvAdapter;
-    ImageViewer imageViewer;
+    Gallery gallery;
     DrawerLayout drawerLayout;
     MaterialToolbar toolbar;
     NavigationView navView;
@@ -87,7 +87,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     }
 
     void initializeViews() {
-        imageViewer = findViewById(R.id.imgViewer);
         drawerLayout = findViewById(R.id.drawer_layout);
         toolbar = findViewById(R.id.toolbar);
         // swiping in from the edge is the system back gesture, so the menu needs a button
@@ -122,6 +121,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         rvAdapter.onExitSelected = () -> fab.setVisibility(View.GONE);
         rv.setAdapter(rvAdapter);
         rv.setLayoutManager(new GridLayoutManager(this, Math.max(2, displayMetrics.widthPixels / 500)));
+        gallery = new Gallery(this, core, rvAdapter);
     }
 
     void setupDatasetChips() {
@@ -304,9 +304,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
             } else if (id == R.id.nav_rest_server) {
                 new RESTServer(core).startListening();
                 updateMenu();
-            } else if (id == R.id.nav_simulate_loading) {
-                ImageViewer.simulateLoading = !ImageViewer.simulateLoading;
-                updateMenu();
             }
             return false;
         });
@@ -347,7 +344,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         String reddit = core.accounts.redditUser();
         m.findItem(R.id.nav_reddit).setTitle(reddit == null ? "Log in to Reddit" : "Reddit accounts");
         m.findItem(R.id.nav_rest_server).setTitle(RESTServer.isRunning ? "REST server running" : "Start REST server");
-        m.findItem(R.id.nav_simulate_loading).setTitle(ImageViewer.simulateLoading ? "Simulating loading" : "Simulate loading");
     }
 
     // logging in -----------------------------------------------------
@@ -388,9 +384,8 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
     }
 
-    public void showImageViewer() {
-        imageViewer.setVisibility(View.VISIBLE);
-        drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+    void onGalleryShown(boolean shown) {
+        drawerLayout.setDrawerLockMode(shown ? DrawerLayout.LOCK_MODE_LOCKED_CLOSED : DrawerLayout.LOCK_MODE_UNLOCKED);
     }
 
     // sync progress ---------------------------------------------
@@ -442,11 +437,10 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         } else if (wvHolder.getVisibility() == View.VISIBLE) {
             if (wv.canGoBack()) wv.goBack();
             else hideWebView();
+        } else if (gallery.isOpen()) {
+            gallery.back();
         } else if (rvAdapter.selected.size() > 0) {
             rvAdapter.clearSelection();
-        } else if (imageViewer.getVisibility() == View.VISIBLE) {
-            imageViewer.setVisibility(View.INVISIBLE);
-            drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
         } else {
             super.onBackPressed();
         }

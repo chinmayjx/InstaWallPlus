@@ -46,6 +46,12 @@ public class InstagramTest {
     }
 
     @Test
+    public void mediaIdEncodesToTheShortcode() {
+        assertEquals("CjYHwKDM4ys", Instagram.mediaIdToShortcode("2943136452138208428"));
+        assertEquals("CjYHwKDM4ys", Instagram.mediaIdToShortcode("2943136452138208428_1234"));
+    }
+
+    @Test
     public void shortcodeDecodesToTheMediaId() throws Exception {
         assertEquals("2943136452138208428", Instagram.shortcodeToMediaId("CjYHwKDM4ys"));
         // private post codes are longer, the id is in the first 11 characters
