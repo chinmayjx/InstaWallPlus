@@ -27,7 +27,7 @@ public class WallpaperWorker extends Worker {
     @Override
     public Result doWork() {
         try {
-            InstaClient.getInstance(getApplicationContext()).setRandomWallpaperNow();
+            Core.get(getApplicationContext()).setRandomWallpaperNow();
             return Result.success();
         } catch (Exception e) {
             Log.e(TAG, "WallpaperWorker: " + Log.getStackTraceString(e));

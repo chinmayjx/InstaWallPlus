@@ -17,7 +17,7 @@ import android.view.View;
 import androidx.annotation.Nullable;
 
 import org.json.JSONException;
-import org.json.JSONObject;
+import cj.instawall.plus.core.Library;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -40,8 +40,9 @@ public class ImageViewer extends View {
     ExecutorService executor = Executors.newCachedThreadPool();
     ScheduledExecutorService singleExecutor = Executors.newSingleThreadScheduledExecutor();
     ScheduledFuture<?> singleTask;
-    InstaClient instaClient;
-    JSONObject currentPostInfo = null;
+    Core core;
+    // the post of the image in the middle, for swiping through carousels / galleries
+    Library.Located current = null;
     int currentImageIndex = 0;
     int nImagesInPost = 0;
     Stack<CJImage> history = new Stack<>();
@@ -53,7 +54,7 @@ public class ImageViewer extends View {
             ref.transform.translateY = -ref.position.y + imgCenter.position.y + imgCenter.bitmap.getHeight();
             ref.transform.opacity = 0;
             ref.startLoading(ImageViewer.this::postInvalidate);
-            instaClient.act_getRandomImageAsync((path) -> {
+            core.randomImageAsync((path) -> {
                 ref.stopLoading();
                 ref.changeImage(path, getWidth(), getHeight());
                 postInvalidate();
@@ -72,7 +73,8 @@ public class ImageViewer extends View {
     int SIMULATE_LOAD_TIME = 2000;
 
     CJImage getImageAtIndexInCurrentPost(int ix) {
-        if (currentPostInfo == null || ix < 0 || ix > instaClient.numberOfImagesInPost(currentPostInfo) - 1)
+        Library.Located post = current;
+        if (post == null || ix < 0 || ix > post.post.images.size() - 1)
             return null;
         CJImage ref = new CJImage(background, getWidth(), getHeight());
         ref.transform.translateX = getWidth();
@@ -81,7 +83,7 @@ public class ImageViewer extends View {
         executor.execute(() -> {
             try {
                 if (simulateLoading) Thread.sleep(SIMULATE_LOAD_TIME);
-                Path pt = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, ix)));
+                Path pt = post.source.fetch(post.post, ix);
                 ref.stopLoading();
                 ref.changeImage(pt, getWidth(), getHeight());
                 postInvalidate();
@@ -96,8 +98,8 @@ public class ImageViewer extends View {
 
         @Override
         public CJImage getNextImage() {
-            if (currentPostInfo == null) return null;
-            int n = instaClient.numberOfImagesInPost(currentPostInfo);
+            if (current == null) return null;
+            int n = current.post.images.size();
             if (n == 1) return null;
             currentImageIndex++;
             currentImageIndex %= n;
@@ -106,8 +108,8 @@ public class ImageViewer extends View {
 
         @Override
         public CJImage getPrevImage() {
-            if (currentPostInfo == null) return null;
-            int n = instaClient.numberOfImagesInPost(currentPostInfo);
+            if (current == null) return null;
+            int n = current.post.images.size();
             currentImageIndex = (currentImageIndex + n - 1) % n;
             if (n == 1) return null;
             return getImageAtIndexInCurrentPost((currentImageIndex + n - 1) % n);
@@ -129,12 +131,7 @@ public class ImageViewer extends View {
 
     public ImageViewer(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        try {
-            instaClient = InstaClient.getInstance(this.getContext());
-        } catch (Exception e) {
-            Log.e(TAG, "ImageViewer: F from InstaClient");
-            e.printStackTrace();
-        }
+        if (!isInEditMode()) core = Core.get(context);
     }
 
     CJImage.Transform rightTransform() {
@@ -165,9 +162,9 @@ public class ImageViewer extends View {
         return bt;
     }
 
-    void loadPostInfo(String postID) {
-        currentImageIndex = InstaClient.PostInfo.imageIndexInPost(currentPostInfo, postID);
-        nImagesInPost = currentPostInfo == null ? 0 : instaClient.numberOfImagesInPost(currentPostInfo);
+    void loadPostInfo() {
+        currentImageIndex = current == null ? 0 : current.index;
+        nImagesInPost = current == null ? 0 : current.post.images.size();
         if (nImagesInPost > 1) {
             imgLeft = getImageAtIndexInCurrentPost((currentImageIndex + nImagesInPost - 1) % nImagesInPost);
             imgRight = getImageAtIndexInCurrentPost((currentImageIndex + 1) % nImagesInPost);
@@ -182,21 +179,11 @@ public class ImageViewer extends View {
         imgRight = null;
         nImagesInPost = 0;
         currentImageIndex = 0;
+        current = null;
         invalidate();
-        if (singleTask != null && !singleTask.isCancelled()) singleTask.cancel(true);
         if (p == null) return;
-        String[] a = p.getFileName().toString().split("\\.")[0].split("_");
-        currentPostInfo = instaClient.postInfoFromCache(a[0]);
-        if (currentPostInfo == null) {
-            singleTask = singleExecutor.schedule(() -> {
-                try {
-                    currentPostInfo = instaClient.getPostInfo(a[0]);
-                    loadPostInfo(a[1]);
-                } catch (Exception ex) {
-                    Log.e(TAG, "setPostByPath: " + p.getFileName() + " " + Log.getStackTraceString(ex));
-                }
-            }, 500, TimeUnit.MILLISECONDS);
-        } else loadPostInfo(a[1]);
+        current = core.library.locate(p);
+        loadPostInfo();
     }
 
     public void loadImage(Path p) {
@@ -353,12 +340,16 @@ public class ImageViewer extends View {
                 float dbw = nImagesInPost * dotRadius * 2 + dotGap * (nImagesInPost - 1);
                 float fr = ((e.getX() - ((getWidth() - dbw) / 2)) / dbw);
                 if (fr > 0 && fr < 1) {
-                    try {
-                        Path pth = Paths.get(InstaClient.imagePath, instaClient.getImageInPost(currentPostInfo, instaClient.getImageAtIndexInPost(currentPostInfo, (int) (fr * nImagesInPost))));
-                        loadImage(pth);
-                    } catch (Exception ex) {
-                        Log.e(TAG, "onTouchEvent: " + Log.getStackTraceString(ex));
-                    }
+                    Library.Located post = current;
+                    int ix = (int) (fr * nImagesInPost);
+                    if (post != null) executor.execute(() -> {
+                        try {
+                            Path pth = post.source.fetch(post.post, ix);
+                            post(() -> loadImage(pth));
+                        } catch (Exception ex) {
+                            Log.e(TAG, "onTouchEvent: " + Log.getStackTraceString(ex));
+                        }
+                    });
                 }
             }
 

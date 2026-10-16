@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 
 public class RESTServer {
     public static final String TAG = "CJ";
-    InstaClient instaClient;
+    Core core;
     ExecutorService executor;
 
     class ResponseWriter {
@@ -72,8 +72,8 @@ public class RESTServer {
         }
     }
 
-    public RESTServer(InstaClient instaClient) {
-        this.instaClient = instaClient;
+    public RESTServer(Core core) {
+        this.core = core;
         executor = Executors.newCachedThreadPool();
     }
 
@@ -136,29 +136,35 @@ public class RESTServer {
         if (title[0].equals("GET")) {
             switch (pathTokens[0]) {
                 case "random-image":
-                    sendFile(client, instaClient.act_getRandomImage());
+                    sendFile(client, core.randomImage());
                     break;
                 case "image":
-                    sendFile(client, Paths.get(instaClient.imagePath, pathTokens[1]));
+                    sendFile(client, downloaded(pathTokens[1]));
                     break;
                 case "collage":
                     sendString(client, "collage");
                     break;
                 case "remove-border":
-                    sendBitmap(client, CJImageUtil.removeWhiteBorder(instaClient.bitmapByFileName(pathTokens[1])));
+                    sendBitmap(client, CJImageUtil.removeWhiteBorder(BitmapFactory.decodeFile(downloaded(pathTokens[1]).toString())));
                     break;
                 case "set-wallpaper":
-                    instaClient.act_setWallpaper(instaClient.pathByFileName(pathTokens[1]));
+                    core.setWallpaper(downloaded(pathTokens[1]));
                     sendString(client, "OK boss");
                     break;
                 case "wallpaper-by-code":
-                    instaClient.act_setWallpaperFromCode(pathTokens[1]);
+                    core.setWallpaperFromInstagramCode(pathTokens[1]);
                     sendString(client, "OK boss");
                     break;
                 default:
                     sendString(client, "404 NOT FOUND");
             }
         }
+    }
+
+    // by file name, only among downloaded images (no paths from the request)
+    Path downloaded(String fileName) throws IOException {
+        for (Path p : core.library.downloaded()) if (p.getFileName().toString().equals(fileName)) return p;
+        throw new java.io.FileNotFoundException(fileName);
     }
 
     void sendString(Socket client, String response) throws IOException {
