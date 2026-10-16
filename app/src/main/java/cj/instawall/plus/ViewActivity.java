@@ -36,6 +36,7 @@ import androidx.appcompat.content.res.AppCompatResources;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
@@ -68,6 +69,7 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
     View wvHolder;
     MaterialToolbar wvToolbar;
     View syncBanner;
+    SwipeRefreshLayout swipeRefresh;
     TextView syncStatus;
     // set while logging into another account, the browser closes once that worked
     boolean addingAccount;
@@ -95,6 +97,10 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
         wvToolbar = findViewById(R.id.wv_toolbar);
         wvToolbar.setNavigationOnClickListener(v -> hideWebView());
         syncBanner = findViewById(R.id.sync_banner);
+        swipeRefresh = findViewById(R.id.swipe_refresh);
+        swipeRefresh.setColorSchemeResources(R.color.iw_accent);
+        swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.iw_surface_high);
+        swipeRefresh.setOnRefreshListener(this::onPullToRefresh);
         syncStatus = findViewById(R.id.sync_status);
         datasetChips = findViewById(R.id.dataset_chips);
 
@@ -406,6 +412,20 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
     void hideWebView() {
         wvHolder.setVisibility(View.INVISIBLE);
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+    }
+
+    // pull to refresh: sync new saves and reload the grid. The banner shows the sync, so the
+    // spinner only stays for the moment it takes to start
+    void onPullToRefresh() {
+        swipeRefresh.setRefreshing(false);
+        if (instaClient == null) {
+            openInstagram();
+            return;
+        }
+        rvAdapter.setCurrentDataset(rvAdapter.getCurrentDataset().ordinal());
+        if (InstaClient.syncing) return;
+        onSyncProgress("Starting sync");
+        instaClient.act_getSavedPosts();
     }
 
     // sync progress ---------------------------------------------

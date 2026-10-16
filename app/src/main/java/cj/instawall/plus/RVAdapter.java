@@ -191,6 +191,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
     }
 
+    Dataset getCurrentDataset() {
+        return currentDataset == null ? Dataset.Random : currentDataset;
+    }
+
     enum Dataset {
         Random,
         Downloaded,
