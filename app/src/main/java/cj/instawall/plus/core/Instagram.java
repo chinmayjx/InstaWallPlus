@@ -92,4 +92,18 @@ public final class Instagram {
         }
         return id.toString();
     }
+
+    /** the other way: a post's link code from its media id ("123" or "123_456") */
+    public static String mediaIdToShortcode(String id) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        int us = id.indexOf('_');
+        BigInteger n = new BigInteger(us < 0 ? id : id.substring(0, us));
+        StringBuilder sb = new StringBuilder();
+        BigInteger b64 = BigInteger.valueOf(64);
+        while (n.signum() > 0) {
+            sb.append(alphabet.charAt(n.mod(b64).intValue()));
+            n = n.divide(b64);
+        }
+        return sb.length() == 0 ? "A" : sb.reverse().toString();
+    }
 }

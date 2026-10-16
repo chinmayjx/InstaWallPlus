@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="56dp"
+    android:layout_height="64dp"
+    android:paddingStart="3dp"
+    android:paddingEnd="3dp">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/strip_iv"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/iw_surface_high"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.InstaWall.Thumb" />
+
+    <View
+        android:id="@+id/strip_selected"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/strip_selected"
+        android:visibility="gone" />
+</FrameLayout>

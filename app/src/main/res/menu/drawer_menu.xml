@@ -46,10 +46,6 @@
                 android:id="@+id/nav_rest_server"
                 android:icon="@drawable/ic_server"
                 android:title="Start REST server" />
-            <item
-                android:id="@+id/nav_simulate_loading"
-                android:icon="@drawable/ic_hourglass"
-                android:title="Simulate loading" />
         </menu>
     </item>
 </menu>

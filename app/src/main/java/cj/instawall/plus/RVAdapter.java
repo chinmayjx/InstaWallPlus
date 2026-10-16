@@ -48,10 +48,19 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     Runnable onEnterSelected, onExitSelected;
     ViewActivity activity;
 
+    /** told when a photo leaves the grid, so the gallery can follow */
+    Consumer<Integer> onRemoved;
+
+    /** a random tile's photo, picked by the gallery before the grid got to it */
+    synchronized void setPath(int pos, Path p) {
+        if (pos < paths.size() && paths.get(pos) == null) paths.set(pos, p);
+    }
+
     void removeIndex(int pos) {
         requested.remove(pos);
         paths.remove(pos);
         notifyItemRemoved(pos);
+        if (onRemoved != null) onRemoved.accept(pos);
         int i = pos + 1;
         while (bitmaps.get(i % MAX).first - pos == 1) {
             bitmaps.set(pos % MAX, new Pair<>(bitmaps.get(i % MAX).first - 1, bitmaps.get(i % MAX).second));
@@ -73,11 +82,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
 
     public void dispatchAction(ClickAction action, int pos) {
         Path p = paths.get(pos);
-        if (p == null) return;
+        if (p == null && action != ClickAction.View) return;
         switch (action) {
             case View:
-                activity.showImageViewer();
-                activity.imageViewer.loadImage(p);
+                activity.gallery.open(pos);
                 break;
             case Select:
                 toggleSelection(pos);
@@ -271,7 +279,9 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                     try {
                         Path p = getPath.get();
                         if (p == null) return;
-                        paths.set(pos, p);
+                        synchronized (this) {
+                            if (pos < paths.size()) paths.set(pos, p);
+                        }
                         // big (4k reddit) images: decode near the tile size
                         Bitmap b = WallpaperSetter.decode(p, 800, 800);
                         if (b != null) {
@@ -301,7 +311,11 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
         switch (currentDataset) {
             case Random:
-                lazyLoadBitmap(holder, pos, this::randomImage);
+                // the gallery may have picked this tile's photo already
+                lazyLoadBitmap(holder, pos, () -> {
+                    Path known = paths.get(pos);
+                    return known != null ? known : randomImage();
+                });
                 break;
             case Downloaded:
             case Trash:
