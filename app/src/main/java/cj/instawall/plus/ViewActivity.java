@@ -1,53 +1,51 @@
 package cj.instawall.plus;
 
-import android.content.ComponentName;
-import java.util.Locale;
-import com.google.android.material.navigation.NavigationView;
-import com.google.android.material.chip.ChipGroup;
-import com.google.android.material.chip.Chip;
-import com.google.android.material.appbar.MaterialToolbar;
-import android.widget.TextView;
-import android.widget.PopupMenu;
-import android.view.MenuItem;
-import android.view.Menu;
-import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.CookieManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
+import android.widget.PopupMenu;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.content.res.AppCompatResources;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.navigation.NavigationView;
+import com.google.android.material.snackbar.Snackbar;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Scanner;
+import java.util.List;
+import java.util.Locale;
 
-public class ViewActivity extends AppCompatActivity {
+import cj.instawall.plus.core.Instagram;
+import cj.instawall.plus.core.Reddit;
+import cj.instawall.plus.core.Source;
+
+public class ViewActivity extends AppCompatActivity implements Core.SyncListener, LoginWebView.Listener {
     public static final String TAG = "CJ";
-    public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
-    // the grid's datasets that have something to show, in chip order
+    // the grid's datasets, in chip order
     static final RVAdapter.Dataset[] CHIP_DATASETS = {RVAdapter.Dataset.Random, RVAdapter.Dataset.Downloaded, RVAdapter.Dataset.Recent_wallpapers, RVAdapter.Dataset.Trash};
-    InstaClient instaClient;
+
+    Core core;
     RecyclerView rv;
     Spinner accountSwitcher;
     ChipGroup datasetChips;
@@ -58,22 +56,37 @@ public class ViewActivity extends AppCompatActivity {
     NavigationView navView;
     TextView headerStats;
     FloatingActionButton fab;
-    int displayWidth;
-
-    MainService mainService;
-    String interceptor;
     BiometricAuth biometricAuth;
     Handler handler;
-    FrameLayout wvHolder;
-    InstaWebView wv;
-    SharedPreferences sharedPreferences;
-    SharedPreferences.Editor spEditor;
-    ArrayList<String> loggedInUsers;
+    View wvHolder;
+    MaterialToolbar wvToolbar;
+    View syncBanner;
+    SwipeRefreshLayout swipeRefresh;
+    TextView syncStatus;
+    LoginWebView wv;
+    List<String> instagramUsers = new ArrayList<>();
     int currentUserIndex;
 
-    void initializeViews() {
-        readScripts();
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_view);
+        core = Core.get(this);
+        handler = new Handler(Looper.getMainLooper());
+        biometricAuth = new BiometricAuth(this);
 
+        initializeViews();
+        setupGrid();
+        setupDatasetChips();
+        setupAccountSwitcher();
+        setupMenu();
+        updateHeader();
+
+        // nothing works without a login, so start there instead of on an empty grid
+        if (!core.loggedIn()) openInstagram();
+    }
+
+    void initializeViews() {
         imageViewer = findViewById(R.id.imgViewer);
         drawerLayout = findViewById(R.id.drawer_layout);
         toolbar = findViewById(R.id.toolbar);
@@ -86,52 +99,42 @@ public class ViewActivity extends AppCompatActivity {
         fab = findViewById(R.id.grid_fab);
         rv = findViewById(R.id.recycler_grid);
         wvHolder = findViewById(R.id.wvHolder);
+        wvToolbar = findViewById(R.id.wv_toolbar);
+        wvToolbar.setNavigationOnClickListener(v -> hideWebView());
+        syncBanner = findViewById(R.id.sync_banner);
+        syncStatus = findViewById(R.id.sync_status);
+        swipeRefresh = findViewById(R.id.swipe_refresh);
+        swipeRefresh.setColorSchemeResources(R.color.iw_accent);
+        swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.iw_surface_high);
+        swipeRefresh.setOnRefreshListener(this::onPullToRefresh);
         datasetChips = findViewById(R.id.dataset_chips);
 
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (wvHolder.getVisibility() == View.VISIBLE) hideWebView();
-            }
-        });
-
-        wv = new InstaWebView(this, this::onLoggedIn, interceptor);
-        wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        wv = new LoginWebView(this, core, this);
+        ((FrameLayout) findViewById(R.id.wv_container)).addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    void onLoggedIn() {
-        boolean firstLogin = instaClient == null;
-        if (mainService != null) mainService.createInstaClient();
-        Toast.makeText(this, "Logged in as " + InstaClient.username, Toast.LENGTH_SHORT).show();
-        // the grid and menu were set up without a client, start over with one
-        if (firstLogin) recreate();
-    }
-
-    void setupRVAdapter() {
+    // grid ---------------------------------------------------------
+    void setupGrid() {
         DisplayMetrics displayMetrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        displayWidth = displayMetrics.widthPixels;
-        rvAdapter = new RVAdapter(instaClient, this);
-
+        rvAdapter = new RVAdapter(core, this);
         rvAdapter.onEnterSelected = () -> fab.setVisibility(View.VISIBLE);
         rvAdapter.onExitSelected = () -> fab.setVisibility(View.GONE);
-
         rv.setAdapter(rvAdapter);
-        rv.setLayoutManager(new GridLayoutManager(this, Math.max(2, displayWidth / 500)));
+        rv.setLayoutManager(new GridLayoutManager(this, Math.max(2, displayMetrics.widthPixels / 500)));
     }
 
     void setupDatasetChips() {
-        for (int i = 0; i < CHIP_DATASETS.length; i++) {
+        for (RVAdapter.Dataset d : CHIP_DATASETS) {
             Chip chip = (Chip) getLayoutInflater().inflate(R.layout.dataset_chip, datasetChips, false);
             chip.setId(View.generateViewId());
-            chip.setText(CHIP_DATASETS[i].toString());
-            chip.setTag(CHIP_DATASETS[i]);
+            chip.setText(d.toString());
+            chip.setTag(d);
             datasetChips.addView(chip);
         }
         datasetChips.setOnCheckedStateChangeListener((group, checkedIds) -> {
             if (checkedIds.isEmpty()) return;
-            RVAdapter.Dataset d = (RVAdapter.Dataset) group.findViewById(checkedIds.get(0)).getTag();
-            rvAdapter.setCurrentDataset(d.ordinal());
+            rvAdapter.setCurrentDataset((RVAdapter.Dataset) group.findViewById(checkedIds.get(0)).getTag());
             setTapAction(0);
         });
         selectDataset(RVAdapter.Dataset.Random);
@@ -142,6 +145,26 @@ public class ViewActivity extends AppCompatActivity {
             View chip = datasetChips.getChildAt(i);
             if (chip.getTag() == dataset) datasetChips.check(chip.getId());
         }
+    }
+
+    /** after logins, account switches and source toggles */
+    void reloadGrid() {
+        selectDataset(RVAdapter.Dataset.Random);
+        rvAdapter.setCurrentDataset(RVAdapter.Dataset.Random);
+        updateHeader();
+        updateMenu();
+    }
+
+    // pull to refresh: sync new saves and reload the grid. The banner shows the sync, so the
+    // spinner only stays for the moment it takes to start
+    void onPullToRefresh() {
+        swipeRefresh.setRefreshing(false);
+        if (!core.loggedIn()) {
+            openInstagram();
+            return;
+        }
+        rvAdapter.setCurrentDataset(rvAdapter.getCurrentDataset());
+        if (!Core.syncing) startSync(false);
     }
 
     static int iconFor(RVAdapter.ClickAction action) {
@@ -200,56 +223,48 @@ public class ViewActivity extends AppCompatActivity {
     }
 
     void setRandomWallpaper() {
-        if (instaClient == null) return;
+        if (!core.loggedIn()) return;
         Toast.makeText(this, "Setting a random wallpaper", Toast.LENGTH_SHORT).show();
-        instaClient.act_setRandomWallpaper();
+        core.setRandomWallpaper();
     }
 
+    // side menu ----------------------------------------------------
     void updateHeader() {
-        if (instaClient == null) {
+        List<String> who = new ArrayList<>();
+        for (Source s : core.library.sources()) who.add(s.label());
+        if (who.isEmpty()) {
             headerStats.setText("Not logged in");
             return;
         }
-        headerStats.setText(String.format(Locale.US, "%,d saved posts", instaClient.getSavedPostIDs().size()));
+        headerStats.setText(String.format(Locale.US, "%s\n%,d saved posts", String.join(" · ", who), core.library.totalPosts()));
     }
 
     void setupAccountSwitcher() {
-        loggedInUsers = InstaClient.getLoggedInUsers();
-        currentUserIndex = loggedInUsers.indexOf(InstaClient.username);
-        ArrayAdapter<String> accountAdapter = new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, loggedInUsers);
-        accountSwitcher.setAdapter(accountAdapter);
+        instagramUsers = core.accounts.instagramUsers();
+        currentUserIndex = instagramUsers.indexOf(core.accounts.instagramUser());
+        accountSwitcher.setAdapter(new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, instagramUsers));
         accountSwitcher.setSelection(currentUserIndex);
-        accountSwitcher.setVisibility(loggedInUsers.isEmpty() ? View.GONE : View.VISIBLE);
+        accountSwitcher.setVisibility(instagramUsers.size() < 2 ? View.GONE : View.VISIBLE);
         accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
                 if (i == currentUserIndex) return;
-                biometricAuth.authenticate("Switch to " + loggedInUsers.get(i), () -> {
-                    String user = loggedInUsers.get(i);
-                    InstaClient.switchToUser(user);
+                String user = instagramUsers.get(i);
+                biometricAuth.authenticate("Switch to " + user, () -> {
+                    Log.d(TAG, "switching account to " + user);
+                    core.accounts.switchInstagram(user);
+                    core.reload();
                     currentUserIndex = i;
-
-                    CookieManager.getInstance().removeAllCookies(null);
-                    String cookie = InstaClient.getUserProperty(user, "cookie");
-                    InstaWebView.setInstaCookie(cookie);
-
                     handler.post(() -> {
+                        accountSwitcher.setSelection(i);
                         wv.loadUrl("about:blank");
-                        selectDataset(RVAdapter.Dataset.Random);
-                        rvAdapter.setCurrentDataset(RVAdapter.Dataset.Random.ordinal());
-                        rvAdapter.notifyDataSetChanged();
-                        updateHeader();
+                        reloadGrid();
                     });
-                }, () -> {
-                    handler.post(() -> {
-                        accountSwitcher.setSelection(currentUserIndex);
-                    });
-                });
+                }, () -> handler.post(() -> accountSwitcher.setSelection(currentUserIndex)));
             }
 
             @Override
             public void onNothingSelected(AdapterView<?> adapterView) {
-
             }
         });
     }
@@ -260,145 +275,165 @@ public class ViewActivity extends AppCompatActivity {
             if (id == R.id.nav_open_instagram) {
                 openInstagram();
             } else if (id == R.id.nav_new_login) {
-                CookieManager.getInstance().removeAllCookies(null);
-                CookieManager.getInstance().flush();
-                wv.resetLogin();
-                showWebView();
-                drawerLayout.close();
-                wv.loadUrl("https://www.instagram.com");
-            } else if (instaClient == null) {
+                showWebView("Instagram", "Log in with another account");
+                wv.addInstagramAccount();
+            } else if (id == R.id.nav_reddit) {
+                onRedditItem();
+            } else if (id == R.id.nav_use_instagram || id == R.id.nav_use_reddit) {
+                String source = id == R.id.nav_use_reddit ? Reddit.SOURCE_ID : Instagram.SOURCE_ID;
+                core.setSourceEnabled(source, core.disabledSources().contains(source));
+                reloadGrid();
+                return false;
+            } else if (!core.loggedIn()) {
                 Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
                 openInstagram();
             } else if (id == R.id.nav_sync) {
-                Toast.makeText(this, "Syncing saved posts", Toast.LENGTH_SHORT).show();
-                instaClient.act_getSavedPosts();
+                startSync(false);
                 drawerLayout.close();
             } else if (id == R.id.nav_continue_sync) {
-                Toast.makeText(this, "Continuing the last sync", Toast.LENGTH_SHORT).show();
-                instaClient.act_continueLastSync();
+                startSync(true);
                 drawerLayout.close();
             } else if (id == R.id.nav_random_wallpaper) {
                 setRandomWallpaper();
                 drawerLayout.close();
             } else if (id == R.id.nav_rest_server) {
-                new RESTServer(instaClient).startListening();
-                updateMenuTitles();
-            } else if (id == R.id.nav_test) {
-                onButtonTest();
+                new RESTServer(core).startListening();
+                updateMenu();
             } else if (id == R.id.nav_simulate_loading) {
                 ImageViewer.simulateLoading = !ImageViewer.simulateLoading;
-                updateMenuTitles();
+                updateMenu();
             }
             return false;
         });
-        updateMenuTitles();
+        updateMenu();
     }
 
-    void updateMenuTitles() {
+    void onRedditItem() {
+        String user = core.accounts.redditUser();
+        if (user == null) {
+            openReddit();
+            return;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("u/" + user)
+                .setItems(new String[]{"Open Reddit", "Sync Reddit saves", "Log out of Reddit"}, (d, which) -> {
+                    if (which == 0) openReddit();
+                    else if (which == 1) {
+                        startSync(Reddit.SOURCE_ID, false);
+                        drawerLayout.close();
+                    } else {
+                        core.accounts.logoutReddit();
+                        core.reload();
+                        reloadGrid();
+                    }
+                }).show();
+    }
+
+    void updateMenu() {
         Menu m = navView.getMenu();
+        String reddit = core.accounts.redditUser();
+        m.findItem(R.id.nav_reddit).setTitle(reddit == null ? "Log in to Reddit" : "u/" + reddit);
+        setSwitch(m.findItem(R.id.nav_use_instagram), Instagram.SOURCE_ID);
+        setSwitch(m.findItem(R.id.nav_use_reddit), Reddit.SOURCE_ID);
+        m.findItem(R.id.nav_use_reddit).setVisible(reddit != null);
         m.findItem(R.id.nav_rest_server).setTitle(RESTServer.isRunning ? "REST server running" : "Start REST server");
         m.findItem(R.id.nav_simulate_loading).setTitle(ImageViewer.simulateLoading ? "Simulating loading" : "Simulate loading");
     }
 
+    void setSwitch(MenuItem item, String sourceId) {
+        View v = item.getActionView();
+        if (v instanceof MaterialSwitch) ((MaterialSwitch) v).setChecked(!core.disabledSources().contains(sourceId));
+    }
+
+    // logging in -----------------------------------------------------
     void openInstagram() {
-        showWebView();
-        drawerLayout.close();
-        Log.d(TAG, "openInstagram: " + InstaClient.username);
-        String cookie = InstaClient.getUserProperty(InstaClient.username, "cookie");
-        if (cookie != null)
-            InstaWebView.setInstaCookie(cookie);
-        wv.login();
+        String user = core.accounts.instagramUser();
+        showWebView("Instagram", user != null ? "Logged in as @" + user : "Log in to continue");
+        wv.openInstagram();
     }
 
-    void setupBiometric() {
-        biometricAuth = new BiometricAuth(this);
-    }
-
-    void onCreateTest(){
-        if (instaClient != null)
-            instaClient.act_test();
-    }
-
-    void onButtonTest(){
-        instaClient.act_test();
+    void openReddit() {
+        String user = core.accounts.redditUser();
+        showWebView("Reddit", user != null ? "Logged in as u/" + user : "Log in to add your Reddit saves");
+        wv.openReddit();
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_view);
-        try {
-            instaClient = InstaClient.getInstance(this);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        bindService(new Intent(this, MainService.class), serviceConnection, Context.BIND_AUTO_CREATE);
-
-        sharedPreferences = getSharedPreferences(GLOBAL_SHARED_PREF, MODE_PRIVATE);
-        spEditor = sharedPreferences.edit();
-
-        handler = new Handler(Looper.getMainLooper());
-
-        initializeViews();
-        setupRVAdapter();
-        setupDatasetChips();
+    public void onLoggedIn(String sourceId, String username) {
+        Toast.makeText(this, "Logged in as " + (Reddit.SOURCE_ID.equals(sourceId) ? "u/" : "@") + username, Toast.LENGTH_SHORT).show();
         setupAccountSwitcher();
-        setupMenu();
-        updateHeader();
-        setupBiometric();
-
-        onCreateTest();
-
-        // nothing works without a login, so start there instead of on an empty grid
-        if (instaClient == null) openInstagram();
+        reloadGrid();
+        hideWebView();
+        // a new account has nothing yet, fetch its saves
+        Source s = core.library.source(sourceId);
+        if (s != null && s.posts.size() == 0 && !Core.syncing) startSync(sourceId, false);
     }
 
-    void readScripts() {
-        try {
-            Scanner s = new Scanner(getAssets().open("Interceptor.js")).useDelimiter("\\A");
-            interceptor = s.hasNext() ? s.next() : "";
-            s.close();
-        } catch (IOException e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        }
+    void showWebView(String title, String subtitle) {
+        wvToolbar.setTitle(title);
+        wvToolbar.setSubtitle(subtitle);
+        wvHolder.setVisibility(View.VISIBLE);
+        drawerLayout.close();
+        drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
     }
 
-    ServiceConnection serviceConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
-            Log.d(TAG, "ViewActivity connected to MainService");
-            MainService.MainBinder binder = (MainService.MainBinder) iBinder;
-            mainService = binder.getService();
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName componentName) {
-            Log.d(TAG, "ViewActivity disconnected from MainService");
-        }
-    };
+    void hideWebView() {
+        wvHolder.setVisibility(View.INVISIBLE);
+        drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+    }
 
     public void showImageViewer() {
         imageViewer.setVisibility(View.VISIBLE);
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
     }
 
-    void showWebView() {
-        fab.setImageDrawable(AppCompatResources.getDrawable(this, android.R.drawable.ic_menu_close_clear_cancel));
-        wvHolder.setVisibility(View.VISIBLE);
-        fab.setVisibility(View.VISIBLE);
+    // sync progress ---------------------------------------------
+    void startSync(boolean resumeOnly) {
+        startSync(null, resumeOnly);
     }
 
-    void hideWebView() {
-        fab.setImageDrawable(AppCompatResources.getDrawable(this, R.drawable.check));
-        wvHolder.setVisibility(View.INVISIBLE);
-        fab.setVisibility(View.INVISIBLE);
+    void startSync(String sourceId, boolean resumeOnly) {
+        onSyncProgress("Starting sync");
+        core.sync(sourceId, resumeOnly);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Core.syncListener = this;
+        if (Core.syncing) onSyncProgress(Core.syncStatus);
+        else syncBanner.setVisibility(View.GONE);
+    }
+
+    @Override
+    protected void onPause() {
+        if (Core.syncListener == this) Core.syncListener = null;
+        super.onPause();
+    }
+
+    @Override
+    public void onSyncProgress(String status) {
+        handler.post(() -> {
+            syncBanner.setVisibility(View.VISIBLE);
+            syncStatus.setText(status == null ? "Syncing saved posts" : status);
+            updateHeader();
+        });
+    }
+
+    @Override
+    public void onSyncDone(String message) {
+        handler.post(() -> {
+            syncBanner.setVisibility(View.GONE);
+            updateHeader();
+            Snackbar.make(rv, message, Snackbar.LENGTH_LONG).show();
+        });
     }
 
     @Override
     public void onBackPressed() {
         if (drawerLayout.isOpen()) {
             drawerLayout.close();
-        } else if (wv != null && wvHolder.getVisibility() == View.VISIBLE) {
+        } else if (wvHolder.getVisibility() == View.VISIBLE) {
             if (wv.canGoBack()) wv.goBack();
             else hideWebView();
         } else if (rvAdapter.selected.size() > 0) {
