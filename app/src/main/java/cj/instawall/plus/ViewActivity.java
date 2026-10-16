@@ -247,6 +247,7 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
                 if (i == currentUserIndex) return;
                 biometricAuth.authenticate("Switch to " + loggedInUsers.get(i), () -> {
                     String user = loggedInUsers.get(i);
+                    Log.d(TAG, "switching account to " + user);
                     InstaClient.switchToUser(user);
                     currentUserIndex = i;
 
@@ -255,6 +256,7 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
                     InstaWebView.setInstaCookie(cookie);
 
                     handler.post(() -> {
+                        accountSwitcher.setSelection(i);
                         wv.loadUrl("about:blank");
                         selectDataset(RVAdapter.Dataset.Random);
                         rvAdapter.setCurrentDataset(RVAdapter.Dataset.Random.ordinal());
@@ -285,6 +287,7 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
                 CookieManager.getInstance().flush();
                 wv.resetLogin();
                 addingAccount = true;
+                wvToolbar.setSubtitle("Log in with another account");
                 showWebView();
                 drawerLayout.close();
                 wv.loadUrl("https://www.instagram.com");
@@ -323,6 +326,8 @@ public class ViewActivity extends AppCompatActivity implements InstaClient.SyncL
     }
 
     void openInstagram() {
+        boolean loggedIn = instaClient != null && InstaClient.username != null && !InstaClient.username.isEmpty();
+        wvToolbar.setSubtitle(loggedIn ? "Logged in as @" + InstaClient.username : "Log in to continue");
         showWebView();
         drawerLayout.close();
         Log.d(TAG, "openInstagram: " + InstaClient.username);

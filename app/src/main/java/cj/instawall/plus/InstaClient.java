@@ -570,6 +570,16 @@ public class InstaClient {
 
     }
 
+    // removes the file for good; the entry stays in deleted_images so the post never comes back as a wallpaper
+    public void permanentlyDeleteImage(Path p) {
+        if (p == null) return;
+        try {
+            Files.deleteIfExists(p);
+        } catch (Exception e) {
+            Log.e(TAG, "permanentlyDeleteImage: " + Log.getStackTraceString(e));
+        }
+    }
+
     // ----------------------------------------------------------
 
     private void setRandomWallpaper() {

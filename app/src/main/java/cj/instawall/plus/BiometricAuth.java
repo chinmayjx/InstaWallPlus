@@ -29,15 +29,16 @@ public class BiometricAuth {
             @Override
             public void onAuthenticationError(int errorCode, CharSequence errString) {
                 super.onAuthenticationError(errorCode, errString);
-                Log.d(TAG, "onAuthenticationError: ");
+                Log.d(TAG, "onAuthenticationError: " + errorCode + " " + errString);
                 failureCallback.run();
             }
 
+            // help and failed attempts aren't the end, the prompt stays open for another try;
+            // only an error (cancelled, too many attempts, ...) is a failure
             @Override
             public void onAuthenticationHelp(int helpCode, CharSequence helpString) {
                 super.onAuthenticationHelp(helpCode, helpString);
-                Log.d(TAG, "onAuthenticationHelp: ");
-                failureCallback.run();
+                Log.d(TAG, "onAuthenticationHelp: " + helpString);
             }
 
             @Override
@@ -51,7 +52,6 @@ public class BiometricAuth {
             public void onAuthenticationFailed() {
                 super.onAuthenticationFailed();
                 Log.d(TAG, "onAuthenticationFailed: ");
-                failureCallback.run();
             }
         });
     }

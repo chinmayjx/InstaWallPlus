@@ -96,6 +96,17 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 instaClient.restoreImage(p);
                 removeIndex(pos);
                 break;
+            case Permanently_delete:
+                new MaterialAlertDialogBuilder(activity)
+                        .setTitle("Delete permanently?")
+                        .setMessage("The photo is removed from this phone and won't be used as a wallpaper again.")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Delete", (d, w) -> {
+                            instaClient.permanentlyDeleteImage(p);
+                            removeIndex(pos);
+                        })
+                        .show();
+                break;
         }
     }
 
