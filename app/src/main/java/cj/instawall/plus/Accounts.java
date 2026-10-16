@@ -14,13 +14,23 @@ import java.util.List;
 
 /**
  * Logged in accounts, in files/auth_info.json:
- * {current_user, app_id, user_data: {NAME: {cookie}}, reddit: {username, cookie}}.
- * Instagram can have several accounts (one active), reddit one.
+ * {current_user, app_id, user_data: {NAME: {cookie}}, reddit_current, reddit_accounts: {NAME: {cookie}}}.
+ * Both services can have several accounts, one active at a time.
  */
 public class Accounts {
     static final String TAG = "CJ";
     private final Path file;
     private JSONObject data;
+
+    /** for tests: no file */
+    Accounts(JSONObject data) {
+        this.file = null;
+        this.data = data;
+        try {
+            if (!data.has("user_data")) data.put("user_data", new JSONObject());
+        } catch (JSONException ignored) {
+        }
+    }
 
     public Accounts(Path file) {
         this.file = file;
@@ -36,6 +46,7 @@ public class Accounts {
     }
 
     private synchronized void save() {
+        if (file == null) return;
         try {
             Files.write(file, data.toString(2).getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
@@ -88,26 +99,89 @@ public class Accounts {
     }
 
     // reddit ------------------------------------------------------
+    // reddit_accounts: {NAME: {cookie}}, reddit_current: NAME (one active, like instagram)
+
+    private JSONObject redditAccounts() {
+        try {
+            // older versions kept one account in "reddit": {username, cookie}
+            JSONObject legacy = data.optJSONObject("reddit");
+            if (!data.has("reddit_accounts")) data.put("reddit_accounts", new JSONObject());
+            if (legacy != null) {
+                String name = legacy.optString("username", "");
+                if (!name.isEmpty()) {
+                    data.getJSONObject("reddit_accounts").put(name, new JSONObject().put("cookie", legacy.optString("cookie")));
+                    if (!data.has("reddit_current")) data.put("reddit_current", name);
+                }
+                data.remove("reddit");
+                save();
+            }
+            return data.getJSONObject("reddit_accounts");
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
     public synchronized String redditUser() {
-        JSONObject r = data.optJSONObject("reddit");
-        return r == null ? null : r.optString("username", null);
+        JSONObject accounts = redditAccounts(); // migrates the old format first
+        String u = data.optString("reddit_current", "");
+        return u.isEmpty() || !accounts.has(u) ? null : u;
     }
 
-    public synchronized String redditCookie() {
-        JSONObject r = data.optJSONObject("reddit");
-        return r == null ? null : r.optString("cookie", null);
+    public synchronized List<String> redditUsers() {
+        List<String> l = new ArrayList<>();
+        JSONArray names = redditAccounts().names();
+        if (names != null) for (int i = 0; i < names.length(); i++) l.add(names.optString(i));
+        return l;
     }
 
+    public synchronized String redditCookie(String user) {
+        JSONObject a = redditAccounts().optJSONObject(user);
+        return a == null ? null : a.optString("cookie", null);
+    }
+
+    /** adds or updates the account and makes it the active one */
     public synchronized void loginReddit(String user, String cookie) {
         try {
-            data.put("reddit", new JSONObject().put("username", user).put("cookie", cookie));
+            redditAccounts().put(user, new JSONObject().put("cookie", cookie));
+            data.put("reddit_current", user);
             save();
         } catch (JSONException ignored) {
         }
     }
 
-    public synchronized void logoutReddit() {
-        data.remove("reddit");
+    /** reddit refreshes its session cookies; keep the stored copy current */
+    public synchronized void updateRedditCookie(String user, String cookie) {
+        JSONObject a = redditAccounts().optJSONObject(user);
+        if (a == null || cookie == null || cookie.equals(a.optString("cookie"))) return;
+        try {
+            a.put("cookie", cookie);
+            save();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    public synchronized void switchReddit(String user) {
+        if (!redditAccounts().has(user)) return;
+        try {
+            data.put("reddit_current", user);
+            save();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    /** removes the account; another one (if any) becomes active */
+    public synchronized void logoutReddit(String user) {
+        redditAccounts().remove(user);
+        if (user.equals(data.optString("reddit_current"))) {
+            List<String> left = redditUsers();
+            data.remove("reddit_current");
+            if (!left.isEmpty()) {
+                try {
+                    data.put("reddit_current", left.get(0));
+                } catch (JSONException ignored) {
+                }
+            }
+        }
         save();
     }
 }
