@@ -28,7 +28,6 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -64,8 +63,9 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     SwipeRefreshLayout swipeRefresh;
     TextView syncStatus;
     LoginWebView wv;
-    List<String> instagramUsers = new ArrayList<>();
-    int currentUserIndex;
+    // every account of every service; one is the active data source
+    List<String[]> accounts = new ArrayList<>();
+    int currentAccountIndex;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -230,37 +230,47 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
 
     // side menu ----------------------------------------------------
     void updateHeader() {
-        List<String> who = new ArrayList<>();
-        for (Source s : core.library.sources()) who.add(s.label());
-        if (who.isEmpty()) {
+        Source active = core.active();
+        if (active == null) {
             headerStats.setText("Not logged in");
             return;
         }
-        headerStats.setText(String.format(Locale.US, "%s\n%,d saved posts", String.join(" · ", who), core.library.totalPosts()));
+        headerStats.setText(String.format(Locale.US, "%,d saved posts", active.posts.size()));
     }
 
+    static String label(String[] account) {
+        return (Reddit.SOURCE_ID.equals(account[0]) ? "u/" : "@") + account[1];
+    }
+
+    // the header's dropdown picks the one data source, from all accounts of all services
     void setupAccountSwitcher() {
-        instagramUsers = core.accounts.instagramUsers();
-        currentUserIndex = instagramUsers.indexOf(core.accounts.instagramUser());
-        accountSwitcher.setAdapter(new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, instagramUsers));
-        accountSwitcher.setSelection(currentUserIndex);
-        accountSwitcher.setVisibility(instagramUsers.size() < 2 ? View.GONE : View.VISIBLE);
+        accounts = core.accounts.allAccounts();
+        currentAccountIndex = -1;
+        String service = core.accounts.activeService(), user = core.accounts.activeUser();
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < accounts.size(); i++) {
+            String[] a = accounts.get(i);
+            labels.add(label(a));
+            if (a[0].equals(service) && a[1].equals(user)) currentAccountIndex = i;
+        }
+        accountSwitcher.setAdapter(new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, labels));
+        accountSwitcher.setSelection(Math.max(0, currentAccountIndex));
+        accountSwitcher.setVisibility(accounts.isEmpty() ? View.GONE : View.VISIBLE);
         accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                if (i == currentUserIndex) return;
-                String user = instagramUsers.get(i);
-                biometricAuth.authenticate("Switch to " + user, () -> {
-                    Log.d(TAG, "switching account to " + user);
-                    core.accounts.switchInstagram(user);
-                    core.reload();
-                    currentUserIndex = i;
+                if (i == currentAccountIndex) return;
+                String[] a = accounts.get(i);
+                biometricAuth.authenticate("Switch to " + label(a), () -> {
+                    Log.d(TAG, "switching to " + a[0] + " " + a[1]);
+                    core.activate(a[0], a[1]);
+                    currentAccountIndex = i;
                     handler.post(() -> {
                         accountSwitcher.setSelection(i);
                         wv.loadUrl("about:blank");
                         reloadGrid();
                     });
-                }, () -> handler.post(() -> accountSwitcher.setSelection(currentUserIndex)));
+                }, () -> handler.post(() -> accountSwitcher.setSelection(currentAccountIndex)));
             }
 
             @Override
@@ -279,11 +289,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
                 wv.addInstagramAccount();
             } else if (id == R.id.nav_reddit) {
                 onRedditItem();
-            } else if (id == R.id.nav_use_instagram || id == R.id.nav_use_reddit) {
-                String source = id == R.id.nav_use_reddit ? Reddit.SOURCE_ID : Instagram.SOURCE_ID;
-                core.setSourceEnabled(source, core.disabledSources().contains(source));
-                reloadGrid();
-                return false;
             } else if (!core.loggedIn()) {
                 Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
                 openInstagram();
@@ -308,48 +313,29 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         updateMenu();
     }
 
-    // the reddit item: pick the active account (fingerprint, like instagram), add, sync, log out
+    // the reddit item: log in, add another account, open, log out (switching is in the header)
     void onRedditItem() {
-        String active = core.accounts.redditUser();
-        if (active == null) {
+        String user = core.accounts.redditUser();
+        if (user == null) {
             openReddit();
             return;
         }
-        List<String> users = core.accounts.redditUsers();
-        List<String> labels = new ArrayList<>();
-        for (String u : users) labels.add((u.equals(active) ? "✓  u/" : "     u/") + u);
-        int add = labels.size();
-        labels.add("Add another Reddit account");
-        labels.add("Sync u/" + active);
-        labels.add("Open Reddit");
-        labels.add("Log out of u/" + active);
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Reddit")
-                .setItems(labels.toArray(new String[0]), (d, which) -> {
-                    if (which < add) {
-                        String user = users.get(which);
-                        if (user.equals(active)) return;
-                        biometricAuth.authenticate("Switch to u/" + user, () -> {
-                            Log.d(TAG, "switching reddit account to " + user);
-                            core.switchReddit(user);
-                            handler.post(this::reloadGrid);
-                        }, () -> {
-                        });
-                    } else if (which == add) {
+                .setItems(new String[]{"Add another Reddit account", "Open Reddit", "Log out of u/" + user}, (d, which) -> {
+                    if (which == 0) {
                         showWebView("Reddit", "Log in with another account");
                         wv.addRedditAccount();
-                    } else if (which == add + 1) {
-                        startSync(Reddit.SOURCE_ID, false);
-                        drawerLayout.close();
-                    } else if (which == add + 2) {
+                    } else if (which == 1) {
                         openReddit();
                     } else {
                         new MaterialAlertDialogBuilder(this)
-                                .setTitle("Log out of u/" + active + "?")
+                                .setTitle("Log out of u/" + user + "?")
                                 .setMessage("Its synced posts stay on the phone and come back if you log in again.")
                                 .setNegativeButton("Cancel", null)
                                 .setPositiveButton("Log out", (d2, w) -> {
-                                    core.logoutReddit(active);
+                                    core.logoutReddit(user);
+                                    setupAccountSwitcher();
                                     reloadGrid();
                                 }).show();
                     }
@@ -359,17 +345,9 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     void updateMenu() {
         Menu m = navView.getMenu();
         String reddit = core.accounts.redditUser();
-        m.findItem(R.id.nav_reddit).setTitle(reddit == null ? "Log in to Reddit" : "u/" + reddit);
-        setSwitch(m.findItem(R.id.nav_use_instagram), Instagram.SOURCE_ID);
-        setSwitch(m.findItem(R.id.nav_use_reddit), Reddit.SOURCE_ID);
-        m.findItem(R.id.nav_use_reddit).setVisible(reddit != null);
+        m.findItem(R.id.nav_reddit).setTitle(reddit == null ? "Log in to Reddit" : "Reddit accounts");
         m.findItem(R.id.nav_rest_server).setTitle(RESTServer.isRunning ? "REST server running" : "Start REST server");
         m.findItem(R.id.nav_simulate_loading).setTitle(ImageViewer.simulateLoading ? "Simulating loading" : "Simulate loading");
-    }
-
-    void setSwitch(MenuItem item, String sourceId) {
-        View v = item.getActionView();
-        if (v instanceof MaterialSwitch) ((MaterialSwitch) v).setChecked(!core.disabledSources().contains(sourceId));
     }
 
     // logging in -----------------------------------------------------

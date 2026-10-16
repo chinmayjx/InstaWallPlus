@@ -42,7 +42,6 @@ import cj.instawall.plus.core.SyncEngine;
 public final class Core {
     static final String TAG = "CJ";
     static final String PREFS = "cj_pref_12345";
-    static final String DISABLED_SOURCES = "disabled_sources";
 
     public interface SyncListener {
         void onSyncProgress(String status);
@@ -83,32 +82,43 @@ public final class Core {
         reload();
     }
 
-    /** makes another reddit account active: its session goes into the WebView cookies */
-    public void switchReddit(String user) {
-        accounts.switchReddit(user);
-        LoginWebView.useRedditSession(accounts.redditCookie(user));
+    /** makes another account (of either service) the one data source */
+    public void activate(String service, String user) {
+        accounts.activate(service, user);
+        if (Reddit.SOURCE_ID.equals(service)) LoginWebView.useRedditSession(accounts.redditCookie(user));
         reload();
     }
 
     public void logoutReddit(String user) {
-        boolean wasActive = user.equals(accounts.redditUser());
+        boolean wasCurrent = user.equals(accounts.redditUser());
         accounts.logoutReddit(user);
-        if (wasActive) {
+        if (wasCurrent) {
             String next = accounts.redditUser();
             LoginWebView.useRedditSession(next == null ? null : accounts.redditCookie(next));
         }
         reload();
     }
 
-    /** rebuild sources after a login, logout or account switch */
+    /** the active account, or null */
+    public Source active() {
+        List<Source> l = library.sources();
+        return l.isEmpty() ? null : l.get(0);
+    }
+
+    /**
+     * The library holds just the active account: grid, wallpapers, widget and sync all use one
+     * data source at a time. Rebuild after a login, logout or switch.
+     */
     public synchronized void reload() {
         List<Source> sources = new ArrayList<>();
-        String insta = accounts.instagramUser();
-        if (insta != null) sources.add(Source.instagram(filesDir, insta, instagramHttp(() -> accounts.instagramCookie(insta))));
-        String reddit = accounts.redditUser();
-        if (reddit != null) sources.add(Source.reddit(filesDir, reddit, redditHttp()));
+        String service = accounts.activeService();
+        if (Instagram.SOURCE_ID.equals(service)) {
+            String insta = accounts.instagramUser();
+            sources.add(Source.instagram(filesDir, insta, instagramHttp(() -> accounts.instagramCookie(insta))));
+        } else if (Reddit.SOURCE_ID.equals(service)) {
+            sources.add(Source.reddit(filesDir, accounts.redditUser(), redditHttp()));
+        }
         library.setSources(sources);
-        library.setDisabled(disabledSources());
     }
 
     public boolean loggedIn() {
@@ -160,19 +170,6 @@ public final class Core {
             Log.e(TAG, "redditUsername: " + e);
             return null;
         }
-    }
-
-    // sources on/off -------------------------------------------------
-    public Set<String> disabledSources() {
-        return new HashSet<>(prefs.getStringSet(DISABLED_SOURCES, Collections.emptySet()));
-    }
-
-    public void setSourceEnabled(String sourceId, boolean enabled) {
-        Set<String> d = disabledSources();
-        if (enabled) d.remove(sourceId);
-        else d.add(sourceId);
-        prefs.edit().putStringSet(DISABLED_SOURCES, d).apply();
-        library.setDisabled(d);
     }
 
     // sync -----------------------------------------------------------
