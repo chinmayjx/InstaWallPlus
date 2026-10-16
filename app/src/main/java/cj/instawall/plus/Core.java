@@ -82,13 +82,6 @@ public final class Core {
         reload();
     }
 
-    /** makes another account (of either service) the one data source */
-    public void activate(String service, String user) {
-        accounts.activate(service, user);
-        if (Reddit.SOURCE_ID.equals(service)) LoginWebView.useRedditSession(accounts.redditCookie(user));
-        reload();
-    }
-
     public void logoutReddit(String user) {
         boolean wasCurrent = user.equals(accounts.redditUser());
         accounts.logoutReddit(user);
@@ -99,26 +92,39 @@ public final class Core {
         reload();
     }
 
-    /** the active account, or null */
-    public Source active() {
-        List<Source> l = library.sources();
-        return l.isEmpty() ? null : l.get(0);
+    public void logoutInstagram(String user) {
+        accounts.logoutInstagram(user);
+        reload();
+    }
+
+    public void setNsfwMode(boolean on) {
+        accounts.setNsfwMode(on);
+        reload();
+    }
+
+    public void setNsfw(String service, String user, boolean nsfw) {
+        accounts.setNsfw(service, user, nsfw);
+        reload();
+    }
+
+    /** a source for any account, used or not (for post counts on the accounts page) */
+    public Source sourceFor(String service, String user) {
+        if (Reddit.SOURCE_ID.equals(service)) return Source.reddit(filesDir, user, redditHttp());
+        return Source.instagram(filesDir, user, instagramHttp(() -> accounts.instagramCookie(user)));
     }
 
     /**
-     * The library holds just the active account: grid, wallpapers, widget and sync all use one
-     * data source at a time. Rebuild after a login, logout or switch.
+     * The library holds the accounts of the current mode (NSFW or normal) together: grid,
+     * wallpapers, widget and sync use all of them. Rebuild after a login, logout or mode change.
      */
     public synchronized void reload() {
         List<Source> sources = new ArrayList<>();
-        String service = accounts.activeService();
-        if (Instagram.SOURCE_ID.equals(service)) {
-            String insta = accounts.instagramUser();
-            sources.add(Source.instagram(filesDir, insta, instagramHttp(() -> accounts.instagramCookie(insta))));
-        } else if (Reddit.SOURCE_ID.equals(service)) {
-            sources.add(Source.reddit(filesDir, accounts.redditUser(), redditHttp()));
-        }
+        for (String[] a : accounts.activeAccounts()) sources.add(sourceFor(a[0], a[1]));
         library.setSources(sources);
+    }
+
+    public boolean hasAccounts() {
+        return !accounts.allAccounts().isEmpty();
     }
 
     public boolean loggedIn() {
@@ -207,21 +213,27 @@ public final class Core {
         return key;
     }
 
-    /** sync every enabled source (or just sourceId), one after the other */
-    public void sync(String sourceId, boolean resumeOnly) {
+    /** sync every account in use (or just one), one after the other */
+    public void sync(Source only, boolean resumeOnly) {
         syncing = true;
         syncStatus = "Starting sync";
         syncWork.execute(() -> {
             List<String> messages = new ArrayList<>();
+            boolean swapped = false;
             try {
-                for (Source s : library.enabled()) {
-                    if (sourceId != null && !sourceId.equals(s.id)) continue;
-                    SyncEngine engine = new SyncEngine(s.id.equals(Reddit.SOURCE_ID) ? "Reddit" : "Instagram", s.feed, s.posts, cursors(),
+                for (Source s : only != null ? Collections.singletonList(only) : library.sources()) {
+                    boolean reddit = Reddit.SOURCE_ID.equals(s.id);
+                    if (reddit) {
+                        // the reddit WebView has one session at a time: this account's
+                        LoginWebView.useRedditSession(accounts.redditCookie(s.account));
+                        swapped = true;
+                    }
+                    SyncEngine engine = new SyncEngine(s.label(), s.feed, s.posts, cursors(),
                             cursorKey(s), s.policy, Sleeper.REAL, this::reportSync, random);
                     SyncEngine.Result r = resumeOnly ? engine.resume() : engine.sync();
-                    Log.d(TAG, "sync " + s.id + ": " + r.outcome + ", " + r.newPosts + " new");
+                    Log.d(TAG, "sync " + s.id + " " + s.account + ": " + r.outcome + ", " + r.newPosts + " new");
                     // reddit refreshes session cookies as it goes, keep the stored copy current
-                    if (Reddit.SOURCE_ID.equals(s.id))
+                    if (reddit)
                         accounts.updateRedditCookie(s.account, android.webkit.CookieManager.getInstance().getCookie(LoginWebView.REDDIT_URL));
                     messages.add(r.message);
                 }
@@ -229,6 +241,10 @@ public final class Core {
                 Log.e(TAG, "sync: " + Log.getStackTraceString(e));
                 messages.add("Sync failed: " + e.getMessage());
             } finally {
+                if (swapped) {
+                    String current = accounts.redditUser();
+                    LoginWebView.useRedditSession(current == null ? null : accounts.redditCookie(current));
+                }
                 syncing = false;
                 SyncListener l = syncListener;
                 if (l != null) l.onSyncDone(messages.isEmpty() ? "Nothing to sync" : String.join("\n", messages));

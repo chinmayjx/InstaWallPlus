@@ -3,6 +3,7 @@ package cj.instawall.plus;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.json.JSONObject;
 import org.junit.Test;
@@ -61,34 +62,60 @@ public class AccountsTest {
     }
 
     @Test
-    public void theLastLoginOrSwitchIsTheOneActiveSource() throws Exception {
-        Accounts a = new Accounts(new JSONObject());
-        assertNull(a.activeService());
-        a.loginInstagram("insta", "c=1", null);
-        assertEquals("instagram", a.activeService());
-        a.loginReddit("red", "c=2");
-        assertEquals("reddit", a.activeService());
-        assertEquals("red", a.activeUser());
-        a.activate("instagram", "insta");
-        assertEquals("instagram", a.activeService());
-        assertEquals("insta", a.activeUser());
-        assertEquals(2, a.allAccounts().size());
-    }
-
-    @Test
-    public void loggingOutTheLastRedditAccountFallsBackToInstagram() throws Exception {
+    public void normalModeUsesEveryAccountNotMarkedNsfw() throws Exception {
         Accounts a = new Accounts(new JSONObject());
         a.loginInstagram("insta", "c=1", null);
         a.loginReddit("red", "c=2");
-        a.logoutReddit("red");
-        assertEquals("instagram", a.activeService());
+        a.loginReddit("spicy", "c=3");
+        a.setNsfw("reddit", "spicy", true);
+        assertFalse(a.nsfwMode());
+        assertEquals(Arrays.asList("insta", "red"), users(a.activeAccounts()));
+        assertEquals(3, a.allAccounts().size());
     }
 
     @Test
-    public void olderFilesWithoutAnActiveServiceUseInstagram() throws Exception {
-        Accounts a = new Accounts(new JSONObject().put("current_user", "insta")
-                .put("user_data", new JSONObject().put("insta", new JSONObject().put("cookie", "c=1")))
-                .put("reddit", new JSONObject().put("username", "red").put("cookie", "c=2")));
-        assertEquals("instagram", a.activeService());
+    public void nsfwModeUsesOnlyNsfwAccounts() throws Exception {
+        Accounts a = new Accounts(new JSONObject());
+        a.loginInstagram("insta", "c=1", null);
+        a.loginInstagram("night", "c=2", null);
+        a.loginReddit("spicy", "c=3");
+        a.setNsfw("instagram", "night", true);
+        a.setNsfw("reddit", "spicy", true);
+        a.setNsfwMode(true);
+        assertEquals(Arrays.asList("night", "spicy"), users(a.activeAccounts()));
+        a.setNsfwMode(false);
+        assertEquals(Arrays.asList("insta"), users(a.activeAccounts()));
+    }
+
+    @Test
+    public void loggingInAgainKeepsTheNsfwMark() throws Exception {
+        Accounts a = new Accounts(new JSONObject());
+        a.loginReddit("spicy", "c=1");
+        a.loginInstagram("night", "c=2", null);
+        a.setNsfw("reddit", "spicy", true);
+        a.setNsfw("instagram", "night", true);
+        a.loginReddit("spicy", "c=3");
+        a.loginInstagram("night", "c=4", null);
+        assertTrue(a.isNsfw("reddit", "spicy"));
+        assertTrue(a.isNsfw("instagram", "night"));
+        assertEquals("c=3", a.redditCookie("spicy"));
+    }
+
+    @Test
+    public void loggingOutOfInstagramPicksAnotherBrowserAccount() throws Exception {
+        Accounts a = new Accounts(new JSONObject());
+        a.loginInstagram("one", "c=1", null);
+        a.loginInstagram("two", "c=2", null);
+        a.logoutInstagram("two");
+        assertEquals("one", a.instagramUser());
+        a.logoutInstagram("one");
+        assertNull(a.instagramUser());
+        assertTrue(a.allAccounts().isEmpty());
+    }
+
+    private static java.util.List<String> users(java.util.List<String[]> accounts) {
+        java.util.List<String> l = new java.util.ArrayList<>();
+        for (String[] x : accounts) l.add(x[1]);
+        return l;
     }
 }
