@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- instagram-ish sunset, darkened at the bottom so the text stays readable -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <gradient
+                android:angle="45"
+                android:centerColor="#FFC13584"
+                android:endColor="#FFF77737"
+                android:startColor="#FF5B51D8" />
+        </shape>
+    </item>
+    <item>
+        <shape>
+            <gradient
+                android:angle="270"
+                android:endColor="#99000000"
+                android:startColor="#00000000" />
+        </shape>
+    </item>
+</layer-list>

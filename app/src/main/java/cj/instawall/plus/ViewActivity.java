@@ -1,6 +1,15 @@
 package cj.instawall.plus;
 
 import android.content.ComponentName;
+import java.util.Locale;
+import com.google.android.material.navigation.NavigationView;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.appbar.MaterialToolbar;
+import android.widget.TextView;
+import android.widget.PopupMenu;
+import android.view.MenuItem;
+import android.view.Menu;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
@@ -17,7 +26,6 @@ import android.webkit.CookieManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
-import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -37,17 +45,21 @@ import java.util.Scanner;
 public class ViewActivity extends AppCompatActivity {
     public static final String TAG = "CJ";
     public static final String GLOBAL_SHARED_PREF = "cj_pref_12345";
+    // the grid's datasets that have something to show, in chip order
+    static final RVAdapter.Dataset[] CHIP_DATASETS = {RVAdapter.Dataset.Random, RVAdapter.Dataset.Downloaded, RVAdapter.Dataset.Recent_wallpapers, RVAdapter.Dataset.Trash};
     InstaClient instaClient;
     RecyclerView rv;
-    Spinner gridDataset, gridAction, accountSwitcher;
+    Spinner accountSwitcher;
+    ChipGroup datasetChips;
     RVAdapter rvAdapter;
     ImageViewer imageViewer;
     DrawerLayout drawerLayout;
-    ListView drawerLV;
+    MaterialToolbar toolbar;
+    NavigationView navView;
+    TextView headerStats;
     FloatingActionButton fab;
     int displayWidth;
 
-    ArrayAdapter<MenuItems> menuAdapter;
     MainService mainService;
     String interceptor;
     BiometricAuth biometricAuth;
@@ -62,17 +74,19 @@ public class ViewActivity extends AppCompatActivity {
     void initializeViews() {
         readScripts();
 
-        if (getSupportActionBar() != null) getSupportActionBar().hide();
-
         imageViewer = findViewById(R.id.imgViewer);
         drawerLayout = findViewById(R.id.drawer_layout);
-        drawerLV = findViewById(R.id.nav_drawer);
+        toolbar = findViewById(R.id.toolbar);
+        // swiping in from the edge is the system back gesture, so the menu needs a button
+        toolbar.setNavigationOnClickListener(v -> drawerLayout.open());
+        toolbar.setOnMenuItemClickListener(this::onToolbarItem);
+        navView = findViewById(R.id.nav_view);
+        headerStats = navView.getHeaderView(0).findViewById(R.id.header_stats);
+        accountSwitcher = navView.getHeaderView(0).findViewById(R.id.accountSwitcher);
         fab = findViewById(R.id.grid_fab);
         rv = findViewById(R.id.recycler_grid);
         wvHolder = findViewById(R.id.wvHolder);
-        gridDataset = findViewById(R.id.grid_dataset);
-        gridAction = findViewById(R.id.grid_action);
-        accountSwitcher = findViewById(R.id.accountSwitcher);
+        datasetChips = findViewById(R.id.dataset_chips);
 
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -103,49 +117,109 @@ public class ViewActivity extends AppCompatActivity {
         rvAdapter.onExitSelected = () -> fab.setVisibility(View.GONE);
 
         rv.setAdapter(rvAdapter);
-        rv.setLayoutManager(new GridLayoutManager(this, displayWidth / 500));
+        rv.setLayoutManager(new GridLayoutManager(this, Math.max(2, displayWidth / 500)));
     }
 
-    void setupSpinners() {
-        ArrayAdapter<RVAdapter.Dataset> datasetAdapter = new ArrayAdapter<RVAdapter.Dataset>(this, android.R.layout.simple_spinner_item, RVAdapter.Dataset.values());
-        datasetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        gridDataset.setAdapter(datasetAdapter);
-
-        ArrayAdapter<RVAdapter.ClickAction> actionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, rvAdapter.currentClickActions);
-        actionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        gridAction.setAdapter(actionAdapter);
-
-
-        gridDataset.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                rvAdapter.setCurrentDataset(i);
-                actionAdapter.notifyDataSetChanged();
-                gridAction.setSelection(0);
-                rvAdapter.setCurrentClickAction(0);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> adapterView) {
-            }
+    void setupDatasetChips() {
+        for (int i = 0; i < CHIP_DATASETS.length; i++) {
+            Chip chip = (Chip) getLayoutInflater().inflate(R.layout.dataset_chip, datasetChips, false);
+            chip.setId(View.generateViewId());
+            chip.setText(CHIP_DATASETS[i].toString());
+            chip.setTag(CHIP_DATASETS[i]);
+            datasetChips.addView(chip);
+        }
+        datasetChips.setOnCheckedStateChangeListener((group, checkedIds) -> {
+            if (checkedIds.isEmpty()) return;
+            RVAdapter.Dataset d = (RVAdapter.Dataset) group.findViewById(checkedIds.get(0)).getTag();
+            rvAdapter.setCurrentDataset(d.ordinal());
+            setTapAction(0);
         });
+        selectDataset(RVAdapter.Dataset.Random);
+    }
 
-        gridAction.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                rvAdapter.setCurrentClickAction(adapterView.getSelectedItemPosition());
-            }
+    void selectDataset(RVAdapter.Dataset dataset) {
+        for (int i = 0; i < datasetChips.getChildCount(); i++) {
+            View chip = datasetChips.getChildAt(i);
+            if (chip.getTag() == dataset) datasetChips.check(chip.getId());
+        }
+    }
 
-            @Override
-            public void onNothingSelected(AdapterView<?> adapterView) {
-            }
+    static int iconFor(RVAdapter.ClickAction action) {
+        switch (action) {
+            case Select:
+                return R.drawable.ic_select;
+            case Set_wallpaper:
+                return R.drawable.ic_wallpaper;
+            case Delete:
+            case Permanently_delete:
+                return R.drawable.ic_delete;
+            case Restore:
+                return R.drawable.ic_restore;
+            default:
+                return R.drawable.ic_view;
+        }
+    }
+
+    // what tapping a photo does, shown as the toolbar icon
+    void setTapAction(int index) {
+        rvAdapter.setCurrentClickAction(index);
+        MenuItem item = toolbar.getMenu().findItem(R.id.action_tap_mode);
+        RVAdapter.ClickAction action = rvAdapter.currentClickAction;
+        if (item == null || action == null) return;
+        item.setIcon(iconFor(action));
+        item.setTitle("On tap: " + action);
+    }
+
+    void showTapActionMenu() {
+        View anchor = toolbar.findViewById(R.id.action_tap_mode);
+        PopupMenu popup = new PopupMenu(this, anchor == null ? toolbar : anchor);
+        popup.getMenu().add(Menu.NONE, Menu.NONE, Menu.NONE, "When I tap a photo").setEnabled(false);
+        for (int i = 0; i < rvAdapter.currentClickActions.size(); i++) {
+            RVAdapter.ClickAction a = rvAdapter.currentClickActions.get(i);
+            popup.getMenu().add(Menu.NONE, i, i + 1, a.toString()).setIcon(iconFor(a))
+                    .setCheckable(true).setChecked(a == rvAdapter.currentClickAction);
+        }
+        popup.setForceShowIcon(true);
+        popup.setOnMenuItemClickListener(mi -> {
+            setTapAction(mi.getItemId());
+            return true;
         });
+        popup.show();
+    }
 
+    boolean onToolbarItem(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_random_wallpaper) {
+            setRandomWallpaper();
+            return true;
+        } else if (id == R.id.action_tap_mode) {
+            showTapActionMenu();
+            return true;
+        }
+        return false;
+    }
+
+    void setRandomWallpaper() {
+        if (instaClient == null) return;
+        Toast.makeText(this, "Setting a random wallpaper", Toast.LENGTH_SHORT).show();
+        instaClient.act_setRandomWallpaper();
+    }
+
+    void updateHeader() {
+        if (instaClient == null) {
+            headerStats.setText("Not logged in");
+            return;
+        }
+        headerStats.setText(String.format(Locale.US, "%,d saved posts", instaClient.getSavedPostIDs().size()));
+    }
+
+    void setupAccountSwitcher() {
         loggedInUsers = InstaClient.getLoggedInUsers();
         currentUserIndex = loggedInUsers.indexOf(InstaClient.username);
-        ArrayAdapter<String> accountAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, loggedInUsers);
+        ArrayAdapter<String> accountAdapter = new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, loggedInUsers);
         accountSwitcher.setAdapter(accountAdapter);
         accountSwitcher.setSelection(currentUserIndex);
+        accountSwitcher.setVisibility(loggedInUsers.isEmpty() ? View.GONE : View.VISIBLE);
         accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
@@ -161,9 +235,10 @@ public class ViewActivity extends AppCompatActivity {
 
                     handler.post(() -> {
                         wv.loadUrl("about:blank");
-                        rvAdapter.setCurrentDataset(0);
-                        gridDataset.setSelection(0);
+                        selectDataset(RVAdapter.Dataset.Random);
+                        rvAdapter.setCurrentDataset(RVAdapter.Dataset.Random.ordinal());
                         rvAdapter.notifyDataSetChanged();
+                        updateHeader();
                     });
                 }, () -> {
                     handler.post(() -> {
@@ -179,90 +254,60 @@ public class ViewActivity extends AppCompatActivity {
         });
     }
 
-    enum MenuItems {
-        Design {
-            @NonNull
-            @Override
-            public String toString() {
-                return "჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻";
+    void setupMenu() {
+        navView.setNavigationItemSelectedListener(item -> {
+            int id = item.getItemId();
+            if (id == R.id.nav_open_instagram) {
+                openInstagram();
+            } else if (id == R.id.nav_new_login) {
+                CookieManager.getInstance().removeAllCookies(null);
+                CookieManager.getInstance().flush();
+                wv.resetLogin();
+                showWebView();
+                drawerLayout.close();
+                wv.loadUrl("https://www.instagram.com");
+            } else if (instaClient == null) {
+                Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
+                openInstagram();
+            } else if (id == R.id.nav_sync) {
+                Toast.makeText(this, "Syncing saved posts", Toast.LENGTH_SHORT).show();
+                instaClient.act_getSavedPosts();
+                drawerLayout.close();
+            } else if (id == R.id.nav_continue_sync) {
+                Toast.makeText(this, "Continuing the last sync", Toast.LENGTH_SHORT).show();
+                instaClient.act_continueLastSync();
+                drawerLayout.close();
+            } else if (id == R.id.nav_random_wallpaper) {
+                setRandomWallpaper();
+                drawerLayout.close();
+            } else if (id == R.id.nav_rest_server) {
+                new RESTServer(instaClient).startListening();
+                updateMenuTitles();
+            } else if (id == R.id.nav_test) {
+                onButtonTest();
+            } else if (id == R.id.nav_simulate_loading) {
+                ImageViewer.simulateLoading = !ImageViewer.simulateLoading;
+                updateMenuTitles();
             }
-        },
-        Open_Instagram,
-        Synchronize,
-        Continue_Failed_Sync,
-        Random_Wallpaper,
-        Start_REST_Server {
-            @NonNull
-            @Override
-            public String toString() {
-                return RESTServer.isRunning ? "REST Server Running" : "Start REST Server";
-            }
-        },
-        Test,
-        New_Login,
-        Simulate_Loading {
-            @NonNull
-            @Override
-            public String toString() {
-                return ImageViewer.simulateLoading ? "Simulating Loading" : "Simulate Loading";
-            }
-        };
-
-        @NonNull
-        @Override
-        public String toString() {
-            return this.name().replace('_', ' ');
-        }
+            return false;
+        });
+        updateMenuTitles();
     }
 
-    void setupMenu() {
-        menuAdapter = new ArrayAdapter<MenuItems>(this, android.R.layout.simple_list_item_1, MenuItems.values());
-        drawerLV.setAdapter(menuAdapter);
-        drawerLV.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                MenuItems c = MenuItems.values()[i];
-                switch (c) {
-                    case Open_Instagram:
-                        showWebView();
-                        drawerLayout.close();
-                        Log.d(TAG, "onItemClick: " + InstaClient.username);
-                        String cookie = InstaClient.getUserProperty(InstaClient.username, "cookie");
-                        if (cookie != null)
-                            InstaWebView.setInstaCookie(cookie);
-                        wv.login();
-                        break;
-                    case Synchronize:
-                        instaClient.act_getSavedPosts();
-                        break;
-                    case Continue_Failed_Sync:
-                        instaClient.act_continueLastSync();
-                        break;
-                    case Random_Wallpaper:
-                        instaClient.act_setRandomWallpaper();
-                        break;
-                    case Start_REST_Server:
-                        new RESTServer(instaClient).startListening();
-                        menuAdapter.notifyDataSetChanged();
-                        break;
-                    case Test:
-                        onButtonTest();
-                        break;
-                    case New_Login:
-                        CookieManager.getInstance().removeAllCookies(null);
-                        CookieManager.getInstance().flush();
-                        wv.resetLogin();
-                        showWebView();
-                        drawerLayout.close();
-                        wv.loadUrl("https://www.instagram.com");
-                        break;
-                    case Simulate_Loading:
-                        ImageViewer.simulateLoading = !ImageViewer.simulateLoading;
-                        menuAdapter.notifyDataSetChanged();
-                        break;
-                }
-            }
-        });
+    void updateMenuTitles() {
+        Menu m = navView.getMenu();
+        m.findItem(R.id.nav_rest_server).setTitle(RESTServer.isRunning ? "REST server running" : "Start REST server");
+        m.findItem(R.id.nav_simulate_loading).setTitle(ImageViewer.simulateLoading ? "Simulating loading" : "Simulate loading");
+    }
+
+    void openInstagram() {
+        showWebView();
+        drawerLayout.close();
+        Log.d(TAG, "openInstagram: " + InstaClient.username);
+        String cookie = InstaClient.getUserProperty(InstaClient.username, "cookie");
+        if (cookie != null)
+            InstaWebView.setInstaCookie(cookie);
+        wv.login();
     }
 
     void setupBiometric() {
@@ -296,11 +341,16 @@ public class ViewActivity extends AppCompatActivity {
 
         initializeViews();
         setupRVAdapter();
-        setupSpinners();
+        setupDatasetChips();
+        setupAccountSwitcher();
         setupMenu();
+        updateHeader();
         setupBiometric();
 
         onCreateTest();
+
+        // nothing works without a login, so start there instead of on an empty grid
+        if (instaClient == null) openInstagram();
     }
 
     void readScripts() {
@@ -319,7 +369,6 @@ public class ViewActivity extends AppCompatActivity {
             Log.d(TAG, "ViewActivity connected to MainService");
             MainService.MainBinder binder = (MainService.MainBinder) iBinder;
             mainService = binder.getService();
-            menuAdapter.notifyDataSetChanged();
         }
 
         @Override
@@ -347,7 +396,9 @@ public class ViewActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (wv != null && wvHolder.getVisibility() == View.VISIBLE) {
+        if (drawerLayout.isOpen()) {
+            drawerLayout.close();
+        } else if (wv != null && wvHolder.getVisibility() == View.VISIBLE) {
             if (wv.canGoBack()) wv.goBack();
             else hideWebView();
         } else if (rvAdapter.selected.size() > 0) {

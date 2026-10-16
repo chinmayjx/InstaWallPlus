@@ -1,28 +1,32 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.InstaWall" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
+    <!-- always dark, the photos are the UI -->
+    <style name="Theme.InstaWall" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/iw_accent</item>
         <item name="colorOnPrimary">@color/white</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_700</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
-    </style>
-
-    <style name="Theme.InstaWall.Fullscreen" parent="Theme.InstaWall">
-        <item name="android:actionBarStyle">@style/Widget.Theme.InstaWall.ActionBar.Fullscreen
-        </item>
-        <item name="android:windowActionBarOverlay">true</item>
-        <item name="android:windowBackground">@null</item>
+        <item name="colorPrimaryContainer">@color/iw_accent_container</item>
+        <item name="colorOnPrimaryContainer">@color/white</item>
+        <item name="colorSecondary">@color/iw_accent</item>
+        <item name="colorSecondaryContainer">@color/iw_accent_container</item>
+        <item name="colorOnSecondaryContainer">@color/white</item>
+        <item name="android:colorBackground">@color/iw_background</item>
+        <item name="colorSurface">@color/iw_surface</item>
+        <item name="colorSurfaceContainer">@color/iw_surface</item>
+        <item name="colorSurfaceContainerHigh">@color/iw_surface_high</item>
+        <item name="colorOnSurface">@color/iw_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/iw_on_surface_dim</item>
+        <item name="colorOutline">@color/iw_outline</item>
+        <item name="android:statusBarColor">@color/iw_background</item>
+        <item name="android:navigationBarColor">@color/iw_background</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <style name="ThemeOverlay.InstaWall.FullscreenContainer" parent="">
-        <item name="fullscreenBackgroundColor">@color/light_blue_600</item>
-        <item name="fullscreenTextColor">@color/light_blue_A200</item>
+        <item name="fullscreenBackgroundColor">@color/light_blue_900</item>
+        <item name="fullscreenTextColor">@color/light_blue_A400</item>
+    </style>
+
+    <style name="ShapeAppearance.InstaWall.Tile" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">14dp</item>
     </style>
 </resources>

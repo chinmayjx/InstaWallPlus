@@ -24,8 +24,7 @@ public class MainWidget extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.wid_btn, pendingIntent);
             appWidgetManager.updateAppWidget(appWidgetId, views);
         }
-        Intent intent = new Intent(context, MainService.class);
-        intent.setAction(MainService.SET_RANDOM_WALLPAPER);
-        context.startForegroundService(intent);
+        // periodic update: new wallpaper every updatePeriodMillis
+        WallpaperWorker.enqueue(context);
     }
 }

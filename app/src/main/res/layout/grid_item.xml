@@ -1,20 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="300dp">
+    android:layout_height="300dp"
+    android:padding="3dp">
 
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/grid_iv"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop" />
+        android:background="@color/iw_surface_high"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.InstaWall.Tile" />
 
-    <View
+    <FrameLayout
         android:id="@+id/grid_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#bb000000"
-        android:visibility="gone"/>
+        android:background="@drawable/tile_selected"
+        android:visibility="gone">
 
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="10dp"
+            android:src="@drawable/ic_check_circle"
+            app:tint="@color/iw_accent" />
+    </FrameLayout>
 </FrameLayout>

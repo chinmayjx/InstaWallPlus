@@ -12,4 +12,14 @@
     <color name="light_blue_A200">#FF40C4FF</color>
     <color name="light_blue_A400">#FF00B0FF</color>
     <color name="black_overlay">#66000000</color>
+
+    <!-- dark, photo-first palette with an instagram pink accent -->
+    <color name="iw_background">#FF000000</color>
+    <color name="iw_surface">#FF121212</color>
+    <color name="iw_surface_high">#FF1E1E1E</color>
+    <color name="iw_accent">#FFF0447B</color>
+    <color name="iw_accent_container">#FF4A1528</color>
+    <color name="iw_on_surface">#FFF2F2F2</color>
+    <color name="iw_on_surface_dim">#FFA0A0A0</color>
+    <color name="iw_outline">#FF2C2C2C</color>
 </resources>

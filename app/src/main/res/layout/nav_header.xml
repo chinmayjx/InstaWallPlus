@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/header_gradient"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="40dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="12dp">
+
+    <!-- the squiggle art from the original sidebar -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:alpha="0.55"
+        android:singleLine="true"
+        android:text="჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻჻"
+        android:textColor="@color/white"
+        android:textSize="14sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="InstaWall+"
+        android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium"
+        android:textColor="@color/white"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/header_stats"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:alpha="0.85"
+        android:text="Not logged in"
+        android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:textColor="@color/white" />
+
+    <Spinner
+        android:id="@+id/accountSwitcher"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_marginStart="-8dp"
+        android:layout_marginTop="8dp"
+        android:theme="@style/ThemeOverlay.Material3.Dark" />
+</LinearLayout>

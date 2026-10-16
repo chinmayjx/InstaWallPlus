@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:title="Instagram">
+        <menu>
+            <item
+                android:id="@+id/nav_open_instagram"
+                android:icon="@drawable/ic_login"
+                android:title="Open Instagram" />
+            <item
+                android:id="@+id/nav_new_login"
+                android:icon="@drawable/ic_person_add"
+                android:title="Add another account" />
+        </menu>
+    </item>
+    <item android:title="Library">
+        <menu>
+            <item
+                android:id="@+id/nav_sync"
+                android:icon="@drawable/ic_sync"
+                android:title="Sync saved posts" />
+            <item
+                android:id="@+id/nav_continue_sync"
+                android:icon="@drawable/ic_history"
+                android:title="Continue interrupted sync" />
+        </menu>
+    </item>
+    <item android:title="Wallpaper">
+        <menu>
+            <item
+                android:id="@+id/nav_random_wallpaper"
+                android:icon="@drawable/ic_shuffle"
+                android:title="Random wallpaper" />
+        </menu>
+    </item>
+    <item android:title="Developer">
+        <menu>
+            <item
+                android:id="@+id/nav_rest_server"
+                android:icon="@drawable/ic_server"
+                android:title="Start REST server" />
+            <item
+                android:id="@+id/nav_test"
+                android:icon="@drawable/ic_bug"
+                android:title="Test" />
+            <item
+                android:id="@+id/nav_simulate_loading"
+                android:icon="@drawable/ic_hourglass"
+                android:title="Simulate loading" />
+        </menu>
+    </item>
+</menu>

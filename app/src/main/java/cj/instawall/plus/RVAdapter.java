@@ -1,7 +1,6 @@
 package cj.instawall.plus;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
@@ -237,10 +236,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     public void showActionDialog(int pos) {
         ArrayList<ClickAction> tmp = new ArrayList<>(currentClickActions);
         tmp.add(0, ClickAction.Select);
-        new AlertDialog.Builder(activity).setTitle(paths.get(pos).getFileName().toString())
-                .setAdapter(new ArrayAdapter<ClickAction>(rv.getContext(), android.R.layout.simple_list_item_1, tmp), (dialog, i) -> {
-                    dispatchAction(tmp.get(i), pos);
-                }).create().show();
+        String[] labels = tmp.stream().map(ClickAction::toString).toArray(String[]::new);
+        new MaterialAlertDialogBuilder(activity)
+                .setItems(labels, (dialog, i) -> dispatchAction(tmp.get(i), pos))
+                .show();
     }
 
     public static class RVHolder extends RecyclerView.ViewHolder {
