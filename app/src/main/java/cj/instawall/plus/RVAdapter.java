@@ -15,9 +15,7 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.json.JSONObject;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,7 +24,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -38,7 +35,7 @@ import java.util.stream.Stream;
 
 class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
     public static final String TAG = "CJ";
-    InstaClient instaClient;
+    Core core;
     final int MAX = 100;
     final int DEFAULT_RANDOM = 1000;
     RecyclerView rv;
@@ -86,14 +83,14 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 toggleSelection(pos);
                 break;
             case Set_wallpaper:
-                instaClient.act_setWallpaper(p);
+                core.setWallpaper(p);
                 break;
             case Delete:
-                instaClient.deleteImage(p);
+                core.delete(p);
                 removeIndex(pos);
                 break;
             case Restore:
-                instaClient.restoreImage(p);
+                core.restore(p);
                 removeIndex(pos);
                 break;
             case Permanently_delete:
@@ -102,7 +99,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                         .setMessage("The photo is removed from this phone and won't be used as a wallpaper again.")
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Delete", (d, w) -> {
-                            instaClient.permanentlyDeleteImage(p);
+                            core.deletePermanently(p);
                             removeIndex(pos);
                         })
                         .show();
@@ -152,47 +149,26 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         currentClickAction = currentClickActions.get(pos);
     }
 
-    void setCurrentDataset(int pos) {
-        if (pos < 0) return;
+    void setCurrentDataset(Dataset dataset) {
         try {
-            currentDataset = Dataset.values()[pos];
-            switch (currentDataset) {
+            currentDataset = dataset;
+            switch (dataset) {
                 case Random:
-                    requested = Stream.generate(() -> false).limit(DEFAULT_RANDOM).collect(Collectors.toList());
-                    paths = new ArrayList<>(Arrays.asList(new Path[DEFAULT_RANDOM]));
+                    // filled lazily with random images
+                    paths = new ArrayList<>(Arrays.asList(new Path[core.loggedIn() ? DEFAULT_RANDOM : 0]));
                     break;
                 case Downloaded:
-                    File dir = new File(InstaClient.imagePath);
-                    File[] files = dir.listFiles();
-                    Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
-                    paths = new ArrayList<Path>((int) dir.length());
-                    for (File f : files) paths.add(Paths.get(f.getAbsolutePath()));
-
-                    requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
+                    paths = core.library.downloaded();
                     break;
                 case Recent_wallpapers:
-                    paths = new ArrayList<>();
-                    Files.readAllLines(Paths.get(InstaClient.filesDir, InstaClient.username, "recent_wallpapers.txt")).forEach(l -> paths.add(Paths.get(l)));
-                    Collections.reverse(paths);
-                    requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
+                    paths = core.recentWallpapers();
                     break;
                 case Trash:
-                    ArrayList<File> f1 = new ArrayList<>();
-                    Iterator<String> it = InstaClient.getDeletedImages().keys();
-                    while (it.hasNext()) {
-                        JSONObject jo = InstaClient.getDeletedImages().getJSONObject(it.next());
-                        File tmp = new File(Paths.get(InstaClient.deletedImagePath, jo.getString("fileName")).toString());
-                        if (!tmp.exists()) continue;
-                        tmp.setLastModified(jo.getLong("ts"));
-                        f1.add(tmp);
-                    }
-                    f1.sort(Comparator.comparingLong(File::lastModified).reversed());
-                    paths = new ArrayList<Path>((int) f1.size());
-                    for (File f : f1) paths.add(Paths.get(f.getAbsolutePath()));
-                    requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
+                    paths = core.library.trash();
                     break;
-
             }
+            paths = new ArrayList<>(paths);
+            requested = Stream.generate(() -> false).limit(paths.size()).collect(Collectors.toList());
             updateCurrentClickActions();
             bitmaps = Stream.generate(() -> new Pair<Integer, Bitmap>(-1, null)).limit(MAX).collect(Collectors.toList());
             rv.scrollToPosition(0);
@@ -210,7 +186,6 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         Random,
         Downloaded,
         Recent_wallpapers,
-        Fails_quality_check,
         Trash;
 
         @NonNull
@@ -220,8 +195,8 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
     }
 
-    public RVAdapter(InstaClient instaClient, ViewActivity activity) {
-        this.instaClient = instaClient;
+    public RVAdapter(Core core, ViewActivity activity) {
+        this.core = core;
         this.handler = new Handler();
         this.rv = activity.rv;
         this.activity = activity;
@@ -295,8 +270,10 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 executor.execute(() -> {
                     try {
                         Path p = getPath.get();
+                        if (p == null) return;
                         paths.set(pos, p);
-                        Bitmap b = BitmapFactory.decodeFile(p.toString());
+                        // big (4k reddit) images: decode near the tile size
+                        Bitmap b = WallpaperSetter.decode(p, 800, 800);
                         if (b != null) {
                             int sw = 800;
                             int sh = (int) (sw * ((float) b.getHeight() / b.getWidth()));
@@ -324,7 +301,7 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
         }
         switch (currentDataset) {
             case Random:
-                lazyLoadBitmap(holder, pos, () -> instaClient.act_getRandomImage());
+                lazyLoadBitmap(holder, pos, this::randomImage);
                 break;
             case Downloaded:
             case Trash:
@@ -332,6 +309,15 @@ class RVAdapter extends RecyclerView.Adapter<RVAdapter.RVHolder> {
                 lazyLoadBitmap(holder, pos, () -> paths.get(pos));
                 break;
 
+        }
+    }
+
+    private Path randomImage() {
+        try {
+            return core.randomImage();
+        } catch (Exception e) {
+            Log.e(TAG, "randomImage: " + e);
+            return null;
         }
     }
 
