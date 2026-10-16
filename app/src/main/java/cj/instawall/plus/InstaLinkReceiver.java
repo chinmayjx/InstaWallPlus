@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
@@ -18,8 +19,13 @@ public class InstaLinkReceiver extends Activity {
         super.onCreate(savedInstanceState);
         String url = getIntent().getStringExtra(Intent.EXTRA_TEXT);
         Log.d(TAG, "InstaLinkReceiver: " + url);
-        Matcher matcher = Pattern.compile("www.instagram.com/p/([^/]*)/").matcher(url);
-        matcher.find();
+        Matcher matcher = Pattern.compile("instagram\\.com/(?:[^/]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)").matcher(url == null ? "" : url);
+        if (!matcher.find()) {
+            Log.e(TAG, "InstaLinkReceiver: not an instagram post link");
+            Toast.makeText(this, "Not an Instagram post link", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
         String code = matcher.group(1);
         Log.d(TAG, "Extracted code: " + code);
         Intent intent = new Intent(this, MainService.class);

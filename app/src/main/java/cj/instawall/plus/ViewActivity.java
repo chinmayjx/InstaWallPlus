@@ -19,6 +19,7 @@ import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -80,8 +81,16 @@ public class ViewActivity extends AppCompatActivity {
             }
         });
 
-        wv = new InstaWebView(this, () -> mainService.createInstaClient(), interceptor);
+        wv = new InstaWebView(this, this::onLoggedIn, interceptor);
         wvHolder.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    void onLoggedIn() {
+        boolean firstLogin = instaClient == null;
+        if (mainService != null) mainService.createInstaClient();
+        Toast.makeText(this, "Logged in as " + InstaClient.username, Toast.LENGTH_SHORT).show();
+        // the grid and menu were set up without a client, start over with one
+        if (firstLogin) recreate();
     }
 
     void setupRVAdapter() {
@@ -242,6 +251,7 @@ public class ViewActivity extends AppCompatActivity {
                     case New_Login:
                         CookieManager.getInstance().removeAllCookies(null);
                         CookieManager.getInstance().flush();
+                        wv.resetLogin();
                         showWebView();
                         drawerLayout.close();
                         wv.loadUrl("https://www.instagram.com");

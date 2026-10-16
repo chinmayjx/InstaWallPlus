@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
+import android.webkit.WebSettings;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -52,6 +54,8 @@ public class InstaClient {
     public static final String IMAGES = "images";
     public static final String DELETED = ".deleted_images";
     public static final String SAVED_POSTS = "saved_posts";
+    // X-IG-App-ID of instagram.com, used when the WebView didn't expose one
+    public static final String DEFAULT_APP_ID = "936619743392459";
     ThreadPoolExecutor executor;
     ThreadPoolExecutor lifoExecutor;
     JSONObject postCodeToID;
@@ -65,6 +69,7 @@ public class InstaClient {
     static Path authInfoFile;
 
     static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir, savedPostPath, deletedImagePath;
+    static String userAgent;
 
     // utilities to access JSON ---------------------
     static class PostInfo {
@@ -153,9 +158,14 @@ public class InstaClient {
             cookie = getUserProperty(username, "cookie");
             sessionID = getSessionID(cookie);
 
+            if (appID == null || appID.isEmpty()) appID = DEFAULT_APP_ID;
+
             headers = new HashMap<>();
             headers.put("cookie", cookie);
             headers.put("X-IG-App-ID", appID);
+            headers.put("Referer", "https://www.instagram.com/");
+            String csrf = getCookieValue(cookie, "csrftoken");
+            if (csrf != null) headers.put("X-CSRFToken", csrf);
 
             Files.createDirectories(Paths.get(filesDir, username, IMAGES));
             Files.createDirectories(Paths.get(filesDir, username, META));
@@ -170,6 +180,51 @@ public class InstaClient {
         } catch (Exception e) {
             Log.e(TAG, "initializeVariables: " + Log.getStackTraceString(e));
         }
+    }
+
+    public static synchronized void loadAuthInfo(Context context) {
+        if (authInfo != null) return;
+        try {
+            authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
+            if (!Files.exists(authInfoFile)) {
+                try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
+                    Files.copy(in, authInfoFile);
+                }
+            }
+            authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
+            if (!authInfo.has("user_data")) authInfo.put("user_data", new JSONObject());
+        } catch (Exception e) {
+            Log.e(TAG, "loadAuthInfo: " + Log.getStackTraceString(e));
+        }
+    }
+
+    // called by InstaWebView once the WebView has a logged in session
+    public static synchronized void onLogin(String username, String cookie, String appID) {
+        setCurrentUser(username);
+        setUserProperty(username, "cookie", cookie);
+        if (appID != null) setAppID(appID);
+        commitAuthFile();
+        if (mainInstance != null) initializeVariables();
+        Log.d(TAG, "onLogin: logged in as " + username);
+    }
+
+    // instagram.com doesn't tell us the username at login anymore, so ask for it
+    public static String fetchUsername(String cookie, String userAgent, String appID) {
+        try {
+            HttpURLConnection con = (HttpURLConnection) new URL("https://www.instagram.com/api/v1/accounts/edit/web_form_data/").openConnection();
+            con.setConnectTimeout(20000);
+            con.setReadTimeout(30000);
+            con.setInstanceFollowRedirects(false);
+            con.setRequestProperty("cookie", cookie);
+            con.setRequestProperty("User-Agent", userAgent);
+            con.setRequestProperty("X-IG-App-ID", appID == null ? DEFAULT_APP_ID : appID);
+            con.setRequestProperty("Referer", "https://www.instagram.com/");
+            String username = checkedJSONResponse(con).getJSONObject("form_data").getString("username");
+            if (!username.isEmpty()) return username;
+        } catch (Exception e) {
+            Log.e(TAG, "fetchUsername: " + Log.getStackTraceString(e));
+        }
+        return null;
     }
 
     public static void commitAuthFile() {
@@ -259,14 +314,9 @@ public class InstaClient {
     private InstaClient(Context context) throws Exception {
         sharedPreferences = context.getSharedPreferences(ViewActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
         spEditor = sharedPreferences.edit();
-        authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
-        if (!Files.exists(authInfoFile)) {
-            try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
-                Files.copy(in, authInfoFile);
-            }
-            throw new Exception("no auth info file found, created one");
-        }
-        authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
+        loadAuthInfo(context);
+        if (authInfo == null) throw new Exception("can't read auth info file");
+        userAgent = WebSettings.getDefaultUserAgent(context);
         // Log.d(TAG, "authInfo: " + authInfo.toString(2));
 
         this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
@@ -276,7 +326,7 @@ public class InstaClient {
 
         initializeVariables();
 
-        if (cookie == null || appID == null || username == null) {
+        if (cookie == null || username == null || username.isEmpty()) {
             Log.e(TAG, "Can't create InstaClient");
             throw new Exception("something's null for InstaClient");
         }
@@ -569,8 +619,8 @@ public class InstaClient {
             return savedPostIDs;
         }
         try {
-            List<String> paths = Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList());
-            return paths;
+            savedPostIDs = Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList());
+            return savedPostIDs;
         } catch (Exception e) {
             Log.e(TAG, "savedItemFiles: " + Log.getStackTraceString(e));
         }
@@ -610,7 +660,7 @@ public class InstaClient {
             return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
         }
         Log.d(TAG, "fetching " + postId + " from IG");
-        HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
+        HttpURLConnection con = getConnection("https://www.instagram.com/api/v1/media/" + postId + "/info/");
         JSONObject res = getJSONResponse(con);
         Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"), StandardCopyOption.REPLACE_EXISTING);
         return res;
@@ -727,6 +777,7 @@ public class InstaClient {
                     spEditor.apply();
                 }
                 if (stop) break;
+                Thread.sleep(1500);
             }
             Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", postIDs.size(), newCount));
         } catch (Exception e) {
@@ -736,58 +787,63 @@ public class InstaClient {
 
 
     private String getPostCodeToID(String code) {
-        try {
-            if (getPostCodeToIDJSON().has(code)) {
-                Log.d(TAG, "found postID for code locally, " + code + " : " + getPostCodeToIDJSON().getString(code));
-                return getPostCodeToIDJSON().getString(code);
-            }
-            Log.d(TAG, "get post id from code:" + code);
-            HttpURLConnection con = getConnection("https://www.instagram.com/p/" + code);
-            String res = getStringResponse(con);
-            Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\"[^>]*media\\?id=(\\d+)").matcher(res);
-            String postID = null;
-            while (matcher.find()) {
-                Log.d(TAG, "match: ");
-                for (int i = 0; i <= matcher.groupCount(); i++) {
-                    Log.d(TAG, "\tgroup: " + matcher.group(i));
-                }
-                postID = matcher.group(1);
-            }
-            if (postID != null) {
-                getPostCodeToIDJSON().put(code, postID);
-                commit();
-            }
-            return postID;
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
+        String postID = shortcodeToMediaID(code);
+        Log.d(TAG, "post code " + code + " -> id " + postID);
+        return postID;
+    }
+
+    // a post's shortcode is its media id in base64 (the post page no longer exposes the id)
+    static String shortcodeToMediaID(String code) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        if (code.length() > 11) code = code.substring(0, 11);
+        BigInteger id = BigInteger.ZERO;
+        for (char c : code.toCharArray()) {
+            int v = alphabet.indexOf(c);
+            if (v < 0) throw new IllegalArgumentException("bad post code: " + code);
+            id = id.shiftLeft(6).add(BigInteger.valueOf(v));
         }
-        return null;
+        return id.toString();
     }
 
     // http util -------------------------------------------------
     private HttpURLConnection getConnection(String urlString) throws IOException {
         URL url = new URL(urlString);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        for (String h : headers.keySet()) con.setRequestProperty(h, headers.get(h));
+        con.setConnectTimeout(20000);
+        con.setReadTimeout(30000);
+        if (userAgent != null) con.setRequestProperty("User-Agent", userAgent);
+        if (url.getHost().endsWith("instagram.com")) {
+            for (String h : headers.keySet()) con.setRequestProperty(h, headers.get(h));
+            // a logged out session redirects to the login page, don't follow it
+            con.setInstanceFollowRedirects(false);
+        }
         return con;
     }
 
     private JSONObject getJSONResponse(HttpURLConnection con) throws IOException, JSONException {
-        JSONObject res = new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
-        con.getInputStream().close();
-        return res;
+        return checkedJSONResponse(con);
     }
 
-    private String getStringResponse(HttpURLConnection con) throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        StringBuilder res = new StringBuilder();
-        String line;
-        while ((line = in.readLine()) != null) {
-            res.append(line);
-            res.append('\n');
+    static JSONObject checkedJSONResponse(HttpURLConnection con) throws IOException, JSONException {
+        int code = con.getResponseCode();
+        if (code != 200) {
+            String body = "";
+            InputStream err = con.getErrorStream();
+            if (err != null) body = readAll(err);
+            if (body.length() > 500) body = body.substring(0, 500);
+            Log.e(TAG, "HTTP " + code + " from " + con.getURL() + ": " + body);
+            if (code == 404) throw new FileNotFoundException(con.getURL().toString());
+            if ((code >= 300 && code < 400) || body.contains("login_required"))
+                throw new IOException("Instagram session expired, open Instagram from the menu and log in again");
+            throw new IOException("HTTP " + code + " from " + con.getURL());
         }
-        in.close();
-        return res.toString();
+        return new JSONObject(readAll(con.getInputStream()));
+    }
+
+    static String readAll(InputStream in) throws IOException {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            return r.lines().collect(Collectors.joining("\n"));
+        }
     }
 
     void downloadFromURL(String url, Path filePath) throws IOException {
@@ -804,6 +860,12 @@ public class InstaClient {
             return m.group(1);
         }
         return null;
+    }
+
+    static String getCookieValue(String cookie, String name) {
+        if (cookie == null) return null;
+        Matcher m = Pattern.compile("(?:^|;\\s*)" + name + "=([^;]*)").matcher(cookie);
+        return m.find() ? m.group(1) : null;
     }
 
     String filenameFromUrl(String url) {
