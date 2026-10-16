@@ -38,11 +38,4 @@
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
         android:textColor="@color/white" />
 
-    <Spinner
-        android:id="@+id/accountSwitcher"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_marginStart="-8dp"
-        android:layout_marginTop="8dp"
-        android:theme="@style/ThemeOverlay.Material3.Dark" />
 </LinearLayout>

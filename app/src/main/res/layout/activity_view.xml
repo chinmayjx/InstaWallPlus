@@ -113,6 +113,8 @@
 
             <include layout="@layout/gallery" />
 
+            <include layout="@layout/accounts_page" />
+
             <!-- instagram in a WebView, for logging in -->
             <LinearLayout
                 android:id="@+id/wvHolder"
