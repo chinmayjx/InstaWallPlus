@@ -5,10 +5,10 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-
     <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:background="?android:attr/colorBackground">
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -19,30 +19,41 @@
                 android:layout_height="match_parent"
                 android:orientation="vertical">
 
-                <LinearLayout
+                <com.google.android.material.appbar.MaterialToolbar
+                    android:id="@+id/toolbar"
                     android:layout_width="match_parent"
-                    android:layout_height="50dp"
-                    android:orientation="horizontal">
+                    android:layout_height="?attr/actionBarSize"
+                    android:background="?android:attr/colorBackground"
+                    app:menu="@menu/toolbar_menu"
+                    app:navigationContentDescription="Menu"
+                    app:navigationIcon="@drawable/ic_menu"
+                    app:title="InstaWall+"
+                    app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
 
-                    <Spinner
-                        android:id="@+id/grid_dataset"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1" />
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none">
 
-                    <Spinner
-                        android:id="@+id/grid_action"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1" />
-                </LinearLayout>
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/dataset_chips"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="6dp"
+                        app:chipSpacingHorizontal="8dp"
+                        app:selectionRequired="true"
+                        app:singleLine="true"
+                        app:singleSelection="true" />
+                </HorizontalScrollView>
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/recycler_grid"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
-
-
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:padding="3dp" />
             </LinearLayout>
 
             <cj.instawall.plus.ImageViewer
@@ -62,37 +73,20 @@
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/grid_fab"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:layout_gravity="bottom|right"
-            android:layout_margin="10dp"
-            android:foregroundGravity="center"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:contentDescription="Done"
             android:src="@drawable/check"
-            android:visibility="gone"
-            app:fabCustomSize="50dp" />
+            android:visibility="gone" />
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-    <LinearLayout
-        android:layout_width="300dp"
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/nav_view"
+        android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:background="#cc000000"
-        android:layout_gravity="start">
-
-        <ListView
-            android:id="@+id/nav_drawer"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_gravity="start"
-            android:choiceMode="singleChoice"
-            android:divider="#333333"
-            android:layout_weight="1"
-            android:dividerHeight="1dp" />
-
-        <Spinner
-            android:id="@+id/accountSwitcher"
-            android:layout_width="match_parent"
-            android:paddingStart="10dp"
-            android:layout_height="50dp" />
-    </LinearLayout>
+        android:layout_gravity="start"
+        app:headerLayout="@layout/nav_header"
+        app:menu="@menu/drawer_menu" />
 </androidx.drawerlayout.widget.DrawerLayout>

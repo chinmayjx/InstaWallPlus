@@ -380,6 +380,11 @@ public class InstaClient {
         });
     }
 
+    // blocking, for callers that already run in the background
+    public void setRandomWallpaperNow() {
+        setRandomWallpaper();
+    }
+
     public void act_setWallpaper(Path path) {
         executor.execute(() -> setWallpaper(path));
     }
