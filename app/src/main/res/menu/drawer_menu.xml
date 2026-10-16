@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:title="Instagram">
         <menu>
             <item
@@ -39,16 +38,6 @@
                 android:id="@+id/nav_random_wallpaper"
                 android:icon="@drawable/ic_shuffle"
                 android:title="Random wallpaper" />
-            <item
-                android:id="@+id/nav_use_instagram"
-                android:icon="@drawable/ic_wallpaper"
-                android:title="Use Instagram saves"
-                app:actionLayout="@layout/menu_switch" />
-            <item
-                android:id="@+id/nav_use_reddit"
-                android:icon="@drawable/ic_wallpaper"
-                android:title="Use Reddit saves"
-                app:actionLayout="@layout/menu_switch" />
         </menu>
     </item>
     <item android:title="Developer">
