@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
+import android.webkit.WebSettings;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -52,8 +55,12 @@ public class InstaClient {
     public static final String IMAGES = "images";
     public static final String DELETED = ".deleted_images";
     public static final String SAVED_POSTS = "saved_posts";
+    // X-IG-App-ID of instagram.com, used when the WebView didn't expose one
+    public static final String DEFAULT_APP_ID = "936619743392459";
     ThreadPoolExecutor executor;
     ThreadPoolExecutor lifoExecutor;
+    // syncing is slow on purpose, keep it off the executor that loads images
+    ThreadPoolExecutor syncExecutor;
     JSONObject postCodeToID;
     Context context;
     SharedPreferences sharedPreferences;
@@ -65,6 +72,7 @@ public class InstaClient {
     static Path authInfoFile;
 
     static String username, appID, cookie, sessionID, imagePath, metaPath, filesDir, savedPostPath, deletedImagePath;
+    static String userAgent;
 
     // utilities to access JSON ---------------------
     static class PostInfo {
@@ -153,9 +161,14 @@ public class InstaClient {
             cookie = getUserProperty(username, "cookie");
             sessionID = getSessionID(cookie);
 
+            if (appID == null || appID.isEmpty()) appID = DEFAULT_APP_ID;
+
             headers = new HashMap<>();
             headers.put("cookie", cookie);
             headers.put("X-IG-App-ID", appID);
+            headers.put("Referer", "https://www.instagram.com/");
+            String csrf = getCookieValue(cookie, "csrftoken");
+            if (csrf != null) headers.put("X-CSRFToken", csrf);
 
             Files.createDirectories(Paths.get(filesDir, username, IMAGES));
             Files.createDirectories(Paths.get(filesDir, username, META));
@@ -170,6 +183,51 @@ public class InstaClient {
         } catch (Exception e) {
             Log.e(TAG, "initializeVariables: " + Log.getStackTraceString(e));
         }
+    }
+
+    public static synchronized void loadAuthInfo(Context context) {
+        if (authInfo != null) return;
+        try {
+            authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
+            if (!Files.exists(authInfoFile)) {
+                try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
+                    Files.copy(in, authInfoFile);
+                }
+            }
+            authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
+            if (!authInfo.has("user_data")) authInfo.put("user_data", new JSONObject());
+        } catch (Exception e) {
+            Log.e(TAG, "loadAuthInfo: " + Log.getStackTraceString(e));
+        }
+    }
+
+    // called by InstaWebView once the WebView has a logged in session
+    public static synchronized void onLogin(String username, String cookie, String appID) {
+        setCurrentUser(username);
+        setUserProperty(username, "cookie", cookie);
+        if (appID != null) setAppID(appID);
+        commitAuthFile();
+        if (mainInstance != null) initializeVariables();
+        Log.d(TAG, "onLogin: logged in as " + username);
+    }
+
+    // instagram.com doesn't tell us the username at login anymore, so ask for it
+    public static String fetchUsername(String cookie, String userAgent, String appID) {
+        try {
+            HttpURLConnection con = (HttpURLConnection) new URL("https://www.instagram.com/api/v1/accounts/edit/web_form_data/").openConnection();
+            con.setConnectTimeout(20000);
+            con.setReadTimeout(30000);
+            con.setInstanceFollowRedirects(false);
+            con.setRequestProperty("cookie", cookie);
+            con.setRequestProperty("User-Agent", userAgent);
+            con.setRequestProperty("X-IG-App-ID", appID == null ? DEFAULT_APP_ID : appID);
+            con.setRequestProperty("Referer", "https://www.instagram.com/");
+            String username = checkedJSONResponse(con).getJSONObject("form_data").getString("username");
+            if (!username.isEmpty()) return username;
+        } catch (Exception e) {
+            Log.e(TAG, "fetchUsername: " + Log.getStackTraceString(e));
+        }
+        return null;
     }
 
     public static void commitAuthFile() {
@@ -259,24 +317,20 @@ public class InstaClient {
     private InstaClient(Context context) throws Exception {
         sharedPreferences = context.getSharedPreferences(ViewActivity.GLOBAL_SHARED_PREF, Context.MODE_PRIVATE);
         spEditor = sharedPreferences.edit();
-        authInfoFile = Paths.get(context.getFilesDir().toString(), "auth_info.json");
-        if (!Files.exists(authInfoFile)) {
-            try (InputStream in = new ByteArrayInputStream("{user_data: {}}".getBytes(StandardCharsets.UTF_8))) {
-                Files.copy(in, authInfoFile);
-            }
-            throw new Exception("no auth info file found, created one");
-        }
-        authInfo = new JSONObject(new String(Files.readAllBytes(authInfoFile)));
+        loadAuthInfo(context);
+        if (authInfo == null) throw new Exception("can't read auth info file");
+        userAgent = WebSettings.getDefaultUserAgent(context);
         // Log.d(TAG, "authInfo: " + authInfo.toString(2));
 
         this.executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.lifoExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LIFOBlockingQueue());
+        this.syncExecutor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
         this.context = context;
         filesDir = context.getExternalFilesDir(null).toString();
 
         initializeVariables();
 
-        if (cookie == null || appID == null || username == null) {
+        if (cookie == null || username == null || username.isEmpty()) {
             Log.e(TAG, "Can't create InstaClient");
             throw new Exception("something's null for InstaClient");
         }
@@ -289,11 +343,11 @@ public class InstaClient {
     }
 
     public void act_continueLastSync() {
-        executor.execute(() -> getSavedPosts(true));
+        syncExecutor.execute(() -> getSavedPosts(true));
     }
 
     public void act_getSavedPosts() {
-        executor.execute(() -> getSavedPosts(false));
+        syncExecutor.execute(() -> getSavedPosts(false));
     }
 
     public void act_setWallpaperFromCode(String code) {
@@ -569,8 +623,8 @@ public class InstaClient {
             return savedPostIDs;
         }
         try {
-            List<String> paths = Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList());
-            return paths;
+            savedPostIDs = new CopyOnWriteArrayList<>(Files.list(Paths.get(savedPostPath)).map(p -> p.getFileName().toString()).collect(Collectors.toList()));
+            return savedPostIDs;
         } catch (Exception e) {
             Log.e(TAG, "savedItemFiles: " + Log.getStackTraceString(e));
         }
@@ -610,7 +664,7 @@ public class InstaClient {
             return new JSONObject(new String(Files.readAllBytes(Paths.get(metaPath, postId + ".json"))));
         }
         Log.d(TAG, "fetching " + postId + " from IG");
-        HttpURLConnection con = getConnection("https://i.instagram.com/api/v1/media/" + postId + "/info/");
+        HttpURLConnection con = getConnection("https://www.instagram.com/api/v1/media/" + postId + "/info/");
         JSONObject res = getJSONResponse(con);
         Files.copy(new ByteArrayInputStream(res.toString(2).getBytes()), Paths.get(metaPath, postId + ".json"), StandardCopyOption.REPLACE_EXISTING);
         return res;
@@ -680,114 +734,197 @@ public class InstaClient {
         return newFileName;
     }
 
+    // pacing for the saved feed, instagram rate limits accounts that page through it too fast
+    static final int PAGE_DELAY_MIN_MS = 6_000, PAGE_DELAY_MAX_MS = 12_000;
+    static final int LONG_PAUSE_EVERY_PAGES = 25, LONG_PAUSE_MIN_MS = 60_000, LONG_PAUSE_MAX_MS = 120_000;
+    static final int MAX_RETRIES = 4, FIRST_RETRY_DELAY_MS = 120_000;
+
+    enum SyncResult {CAUGHT_UP, END_OF_FEED, FAILED}
+
+    // Synchronize: fetch new saves from the top until we reach posts we already have, then finish
+    // an interrupted sync (if any) from where it stopped. Continue_Failed_Sync only does the latter.
     private void getSavedPosts(boolean continueLast) {
+        String pending = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
+        Log.d(TAG, "getSavedPosts: begin, pending cursor: " + (pending != null));
+        if (!continueLast) {
+            // with an interrupted sync pending, the cursor belongs to it; don't overwrite it from the top
+            SyncResult r = syncSavedPosts(null, pending == null);
+            if (r == SyncResult.FAILED) return;
+            if (pending == null) {
+                clearSyncCursor();
+                return;
+            }
+        }
+        if (pending == null) {
+            Log.d(TAG, "getSavedPosts: nothing to continue");
+            return;
+        }
+        Log.d(TAG, "getSavedPosts: continuing interrupted sync");
+        if (syncSavedPosts(pending, true) != SyncResult.FAILED) clearSyncCursor();
+    }
+
+    private void clearSyncCursor() {
+        spEditor.remove(SPKeys.LAST_SYNC_CURSOR);
+        spEditor.commit();
+    }
+
+    // pages through the saved feed from startCursor (null = newest). With saveCursor, the cursor of
+    // every finished page is stored so a failed sync can be continued.
+    private SyncResult syncSavedPosts(String startCursor, boolean saveCursor) {
+        String max_id = startCursor;
+        HashSet<String> known = new HashSet<>(getSavedPostIDs());
+        int repeatCount = 0;
+        int repeatLimit = 5;
+        int newCount = 0;
+        int pages = 0;
         try {
-            Log.d(TAG, "getSavedPosts: begin");
-            String max_id = null;
-            if (continueLast) {
-                max_id = sharedPreferences.getString(SPKeys.LAST_SYNC_CURSOR, null);
-                Log.d(TAG, String.format("Continue failed sync from cursor, %s", max_id));
-            }
-            List<String> postIDs = getSavedPostIDs();
-            HashSet<String> set = new HashSet<>(postIDs);
-            int repeatCount = 0;
-            int repeatLimit = 5;
-            int newCount = 0;
-            boolean moreAvailable = true;
-            while (moreAvailable) {
+            while (true) {
                 String url = "https://www.instagram.com/api/v1/feed/saved/posts/";
-                if (max_id != null) {
-                    url += "?max_id=" + max_id;
-                }
-                HttpURLConnection con = getConnection(url);
-                JSONObject res = getJSONResponse(con);
-                moreAvailable = res.getBoolean("more_available");
-                JSONArray tmpItems = res.getJSONArray("items");
+                if (max_id != null) url += "?max_id=" + max_id;
+                JSONObject res = getJSONWithRetry(url);
+                pages++;
+                JSONArray items = res.getJSONArray("items");
+                boolean moreAvailable = res.optBoolean("more_available");
                 max_id = res.optString("next_max_id");
-                Log.d(TAG, String.format("fetched %d elements, next max_id is %s", tmpItems.length(), max_id));
-                boolean stop = false;
-                for (int i = 0; i < tmpItems.length(); i++) {
-                    if (set.contains(SavedItem.postID(tmpItems.getJSONObject(i)))) {
-                        repeatCount++;
-                        if (repeatCount == repeatLimit) {
-                            Log.d(TAG, "repeat limit hit, sync complete");
-                            stop = true;
-                            break;
-                        }
-                    } else {
-                        JSONObject item = tmpItems.getJSONObject(i);
-                        String postID = SavedItem.postID(item);
-                        getSavedPostIDs().add(postID);
-                        Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
-                        newCount++;
+                boolean caughtUp = false;
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.getJSONObject(i);
+                    String postID = SavedItem.postID(item);
+                    if (known.contains(postID)) {
+                        if (++repeatCount >= repeatLimit) caughtUp = true;
+                        continue;
                     }
+                    known.add(postID);
+                    getSavedPostIDs().add(postID);
+                    Files.copy(new ByteArrayInputStream(item.toString(2).getBytes()), Paths.get(savedPostPath, postID), StandardCopyOption.REPLACE_EXISTING);
+                    newCount++;
                 }
-                if (!max_id.isEmpty()) {
+                Log.d(TAG, String.format("sync page %d: %d items, %d new so far, total %d", pages, items.length(), newCount, getSavedPostIDs().size()));
+                if (caughtUp) {
+                    Log.d(TAG, "sync: reached already synced posts");
+                    return SyncResult.CAUGHT_UP;
+                }
+                if (!moreAvailable || max_id.isEmpty()) {
+                    Log.d(TAG, "sync: reached the end of saved posts");
+                    return SyncResult.END_OF_FEED;
+                }
+                if (saveCursor) {
                     spEditor.putString(SPKeys.LAST_SYNC_CURSOR, max_id);
-                    spEditor.apply();
+                    spEditor.commit();
                 }
-                if (stop) break;
+                long delay = randomBetween(PAGE_DELAY_MIN_MS, PAGE_DELAY_MAX_MS);
+                if (pages % LONG_PAUSE_EVERY_PAGES == 0) {
+                    delay = randomBetween(LONG_PAUSE_MIN_MS, LONG_PAUSE_MAX_MS);
+                    Log.d(TAG, "sync: taking a " + delay / 1000 + "s break");
+                }
+                Thread.sleep(delay);
             }
-            Log.d(TAG, String.format("getSavedPosts: complete, total saved posts is %d, new: %d", postIDs.size(), newCount));
         } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
+            Log.e(TAG, "sync failed after " + pages + " pages, " + newCount + " new posts. Use Continue Failed Sync to resume. " + Log.getStackTraceString(e));
+            return SyncResult.FAILED;
         }
     }
 
+    // retries rate limits, server errors and network errors with exponential backoff
+    private JSONObject getJSONWithRetry(String url) throws Exception {
+        long rateLimitDelay = FIRST_RETRY_DELAY_MS;
+        long networkDelay = 30_000;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return getJSONResponse(getConnection(url));
+            } catch (SessionExpiredException | FileNotFoundException e) {
+                throw e;
+            } catch (HttpStatusException e) {
+                if ((e.code != 429 && e.code < 500) || attempt >= MAX_RETRIES) throw e;
+                Log.w(TAG, "HTTP " + e.code + ", waiting " + rateLimitDelay / 1000 + "s before retrying");
+                Thread.sleep(rateLimitDelay);
+                rateLimitDelay *= 2;
+            } catch (IOException e) {
+                if (attempt >= MAX_RETRIES) throw e;
+                Log.w(TAG, "network error (" + e + "), waiting " + networkDelay / 1000 + "s before retrying");
+                Thread.sleep(networkDelay);
+                networkDelay *= 2;
+            }
+        }
+    }
+
+    static long randomBetween(long min, long max) {
+        return min + (long) (Math.random() * (max - min));
+    }
 
     private String getPostCodeToID(String code) {
-        try {
-            if (getPostCodeToIDJSON().has(code)) {
-                Log.d(TAG, "found postID for code locally, " + code + " : " + getPostCodeToIDJSON().getString(code));
-                return getPostCodeToIDJSON().getString(code);
-            }
-            Log.d(TAG, "get post id from code:" + code);
-            HttpURLConnection con = getConnection("https://www.instagram.com/p/" + code);
-            String res = getStringResponse(con);
-            Matcher matcher = Pattern.compile("meta\\s*property\\s*=\\s*\"al:ios:url\"[^>]*media\\?id=(\\d+)").matcher(res);
-            String postID = null;
-            while (matcher.find()) {
-                Log.d(TAG, "match: ");
-                for (int i = 0; i <= matcher.groupCount(); i++) {
-                    Log.d(TAG, "\tgroup: " + matcher.group(i));
-                }
-                postID = matcher.group(1);
-            }
-            if (postID != null) {
-                getPostCodeToIDJSON().put(code, postID);
-                commit();
-            }
-            return postID;
-        } catch (Exception e) {
-            Log.e(TAG, Log.getStackTraceString(e));
+        String postID = shortcodeToMediaID(code);
+        Log.d(TAG, "post code " + code + " -> id " + postID);
+        return postID;
+    }
+
+    // a post's shortcode is its media id in base64 (the post page no longer exposes the id)
+    static String shortcodeToMediaID(String code) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        if (code.length() > 11) code = code.substring(0, 11);
+        BigInteger id = BigInteger.ZERO;
+        for (char c : code.toCharArray()) {
+            int v = alphabet.indexOf(c);
+            if (v < 0) throw new IllegalArgumentException("bad post code: " + code);
+            id = id.shiftLeft(6).add(BigInteger.valueOf(v));
         }
-        return null;
+        return id.toString();
     }
 
     // http util -------------------------------------------------
     private HttpURLConnection getConnection(String urlString) throws IOException {
         URL url = new URL(urlString);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        for (String h : headers.keySet()) con.setRequestProperty(h, headers.get(h));
+        con.setConnectTimeout(20000);
+        con.setReadTimeout(30000);
+        if (userAgent != null) con.setRequestProperty("User-Agent", userAgent);
+        if (url.getHost().endsWith("instagram.com")) {
+            for (String h : headers.keySet()) con.setRequestProperty(h, headers.get(h));
+            // a logged out session redirects to the login page, don't follow it
+            con.setInstanceFollowRedirects(false);
+        }
         return con;
     }
 
     private JSONObject getJSONResponse(HttpURLConnection con) throws IOException, JSONException {
-        JSONObject res = new JSONObject(new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n")));
-        con.getInputStream().close();
-        return res;
+        return checkedJSONResponse(con);
     }
 
-    private String getStringResponse(HttpURLConnection con) throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        StringBuilder res = new StringBuilder();
-        String line;
-        while ((line = in.readLine()) != null) {
-            res.append(line);
-            res.append('\n');
+    static JSONObject checkedJSONResponse(HttpURLConnection con) throws IOException, JSONException {
+        int code = con.getResponseCode();
+        if (code != 200) {
+            String body = "";
+            InputStream err = con.getErrorStream();
+            if (err != null) body = readAll(err);
+            if (body.length() > 500) body = body.substring(0, 500);
+            Log.e(TAG, "HTTP " + code + " from " + con.getURL() + ": " + body);
+            if (code == 404) throw new FileNotFoundException(con.getURL().toString());
+            if ((code >= 300 && code < 400) || body.contains("login_required"))
+                throw new SessionExpiredException();
+            throw new HttpStatusException(code, "HTTP " + code + " from " + con.getURL());
         }
-        in.close();
-        return res.toString();
+        return new JSONObject(readAll(con.getInputStream()));
+    }
+
+    static class SessionExpiredException extends IOException {
+        SessionExpiredException() {
+            super("Instagram session expired, open Instagram from the menu and log in again");
+        }
+    }
+
+    static class HttpStatusException extends IOException {
+        final int code;
+
+        HttpStatusException(int code, String message) {
+            super(message);
+            this.code = code;
+        }
+    }
+
+    static String readAll(InputStream in) throws IOException {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            return r.lines().collect(Collectors.joining("\n"));
+        }
     }
 
     void downloadFromURL(String url, Path filePath) throws IOException {
@@ -804,6 +941,12 @@ public class InstaClient {
             return m.group(1);
         }
         return null;
+    }
+
+    static String getCookieValue(String cookie, String name) {
+        if (cookie == null) return null;
+        Matcher m = Pattern.compile("(?:^|;\\s*)" + name + "=([^;]*)").matcher(cookie);
+        return m.find() ? m.group(1) : null;
     }
 
     String filenameFromUrl(String url) {

@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressLint("SetJavaScriptEnabled")
 public class InstaWebView extends WebView {
@@ -29,6 +30,8 @@ public class InstaWebView extends WebView {
     Context context;
     Runnable loginCallback;
     String interceptor;
+    volatile String appID;
+    final AtomicBoolean loginHandled = new AtomicBoolean(false);
 
     public static void setCookie(String url, String cookie){
         String[] cookies = cookie.split(";");
@@ -49,6 +52,7 @@ public class InstaWebView extends WebView {
         this.context = context;
         this.loginCallback = loginCallback;
         this.interceptor = interceptor;
+        InstaClient.loadAuthInfo(context);
 
         this.getSettings().setDomStorageEnabled(true);
         this.getSettings().setJavaScriptEnabled(true);
@@ -56,23 +60,23 @@ public class InstaWebView extends WebView {
             @Override
             public void onPageFinished(WebView view, String url) {
                 view.evaluateJavascript(interceptor, null);
+                checkLogin();
                 super.onPageFinished(view, url);
+            }
+
+            @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                // instagram.com is a single page app, after logging in it doesn't always load a new page
+                checkLogin();
+                super.doUpdateVisitedHistory(view, url, isReload);
             }
 
             @Nullable
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                if (request.getUrl().toString().contains("api/v1/feed/timeline") &&
-                        request.getMethod().equals("POST")) {
-                    Map<String, String> headers = request.getRequestHeaders();
-
-                    if (headers.containsKey("X-IG-App-ID"))
-                        InstaClient.setAppID(headers.get("X-IG-App-ID"));
-
-                    InstaClient.setCurrentUserProperty("cookie", CookieManager.getInstance()
-                            .getCookie("https://www.instagram.com"));
-                    InstaClient.commitAuthFile();
-                    loginCallback.run();
+                Map<String, String> headers = request.getRequestHeaders();
+                for (String h : headers.keySet()) {
+                    if (h.equalsIgnoreCase("X-IG-App-ID")) appID = headers.get(h);
                 }
                 return super.shouldInterceptRequest(view, request);
             }
@@ -91,6 +95,30 @@ public class InstaWebView extends WebView {
                 return super.onConsoleMessage(consoleMessage);
             }
         });
+    }
+
+    // logged in once instagram has set the session cookies
+    void checkLogin() {
+        String cookie = CookieManager.getInstance().getCookie("https://www.instagram.com");
+        if (InstaClient.getCookieValue(cookie, "sessionid") == null || InstaClient.getCookieValue(cookie, "ds_user_id") == null)
+            return;
+        if (!loginHandled.compareAndSet(false, true)) return;
+        CookieManager.getInstance().flush();
+        String userAgent = getSettings().getUserAgentString();
+        new Thread(() -> {
+            String username = InstaClient.fetchUsername(cookie, userAgent, appID);
+            if (username == null) {
+                Log.e(TAG, "checkLogin: logged in, but couldn't get the username");
+                loginHandled.set(false);
+                return;
+            }
+            InstaClient.onLogin(username, cookie, appID);
+            post(loginCallback);
+        }).start();
+    }
+
+    public void resetLogin() {
+        loginHandled.set(false);
     }
 
     public void login() {

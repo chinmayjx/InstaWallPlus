@@ -1,0 +1,60 @@
+name: Android
+
+# Pull requests: build the APK to check the change compiles.
+# Merges to master: build a signed release APK and publish it as a GitHub release.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        if: github.event_name == 'pull_request'
+        run: ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InstaWallPlus-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Build signed release APK
+        if: github.event_name != 'pull_request'
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          export RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RELEASE_KEYSTORE_PATH"
+          VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          ./gradlew assembleRelease -PversionCode=$VERSION_CODE
+          cp app/build/outputs/apk/release/app-release.apk "InstaWallPlus-v$VERSION_CODE.apk"
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION_CODE" "InstaWallPlus-v$VERSION_CODE.apk" \
+            --target "$GITHUB_SHA" \
+            --title "InstaWall+ v$VERSION_CODE" \
+            --notes "Built from $GITHUB_SHA: $(git log -1 --format=%s)"
