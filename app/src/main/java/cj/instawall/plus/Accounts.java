@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * Logged in accounts, in files/auth_info.json:
  * {current_user, app_id, user_data: {NAME: {cookie}}, reddit_current, reddit_accounts: {NAME: {cookie}}}.
- * Both services can have several accounts, one active at a time.
+ * Both services can have several accounts; current_user / reddit_current is the one the login
+ * browser uses. The app uses all of them together.
  */
 public class Accounts {
     static final String TAG = "CJ";
@@ -54,39 +55,12 @@ public class Accounts {
         }
     }
 
-    // the one active data source ----------------------------------------
-    // active_service: "instagram" or "reddit"; within it the service's current account
-
-    /** "instagram" or "reddit" (null when not logged in anywhere) */
-    public synchronized String activeService() {
-        String s = data.optString("active_service", "");
-        if ("reddit".equals(s) && redditUser() != null) return "reddit";
-        if ("instagram".equals(s) && instagramUser() != null) return "instagram";
-        if (instagramUser() != null) return "instagram";
-        return redditUser() != null ? "reddit" : null;
-    }
-
-    public synchronized String activeUser() {
-        String s = activeService();
-        if (s == null) return null;
-        return s.equals("reddit") ? redditUser() : instagramUser();
-    }
-
     /** every account as {service, user}, instagram first */
     public synchronized List<String[]> allAccounts() {
         List<String[]> l = new ArrayList<>();
-        for (String u : instagramUsers()) l.add(new String[]{"instagram", u});
+        for (String u : instagramUsers()) if (instagramCookie(u) != null) l.add(new String[]{"instagram", u});
         for (String u : redditUsers()) l.add(new String[]{"reddit", u});
         return l;
-    }
-
-    public synchronized void activate(String service, String user) {
-        if ("reddit".equals(service)) switchReddit(user);
-        else switchInstagram(user);
-    }
-
-    private void setActiveService(String service) throws JSONException {
-        data.put("active_service", service);
     }
 
     // instagram ---------------------------------------------------
@@ -118,7 +92,6 @@ public class Accounts {
             if (!users.has(user)) users.put(user, new JSONObject());
             users.getJSONObject(user).put("cookie", cookie);
             data.put("current_user", user);
-            setActiveService("instagram");
             if (appId != null) data.put("app_id", appId);
             save();
         } catch (JSONException e) {
@@ -126,13 +99,25 @@ public class Accounts {
         }
     }
 
+    /** the account the instagram browser logs in with */
     public synchronized void switchInstagram(String user) {
         try {
             data.put("current_user", user);
-            setActiveService("instagram");
             save();
         } catch (JSONException ignored) {
         }
+    }
+
+    public synchronized void logoutInstagram(String user) {
+        data.optJSONObject("user_data").remove(user);
+        if (user.equals(data.optString("current_user"))) {
+            List<String> left = instagramUsers();
+            try {
+                data.put("current_user", left.isEmpty() ? "" : left.get(0));
+            } catch (JSONException ignored) {
+            }
+        }
+        save();
     }
 
     // reddit ------------------------------------------------------
@@ -176,12 +161,13 @@ public class Accounts {
         return a == null ? null : a.optString("cookie", null);
     }
 
-    /** adds or updates the account and makes it the active one */
+    /** adds or updates the account and makes it the browser's session */
     public synchronized void loginReddit(String user, String cookie) {
         try {
-            redditAccounts().put(user, new JSONObject().put("cookie", cookie));
+            JSONObject all = redditAccounts();
+            if (!all.has(user)) all.put(user, new JSONObject());
+            all.getJSONObject(user).put("cookie", cookie);
             data.put("reddit_current", user);
-            setActiveService("reddit");
             save();
         } catch (JSONException ignored) {
         }
@@ -202,7 +188,6 @@ public class Accounts {
         if (!redditAccounts().has(user)) return;
         try {
             data.put("reddit_current", user);
-            setActiveService("reddit");
             save();
         } catch (JSONException ignored) {
         }

@@ -46,7 +46,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
 
     Core core;
     RecyclerView rv;
-    Spinner accountSwitcher;
     ChipGroup datasetChips;
     RVAdapter rvAdapter;
     Gallery gallery;
@@ -63,9 +62,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     SwipeRefreshLayout swipeRefresh;
     TextView syncStatus;
     LoginWebView wv;
-    // every account of every service; one is the active data source
-    List<String[]> accounts = new ArrayList<>();
-    int currentAccountIndex;
+    AccountsPage accountsPage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,12 +75,11 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         initializeViews();
         setupGrid();
         setupDatasetChips();
-        setupAccountSwitcher();
         setupMenu();
         updateHeader();
 
-        // nothing works without a login, so start there instead of on an empty grid
-        if (!core.loggedIn()) openInstagram();
+        // nothing works without an account, so start there instead of on an empty grid
+        if (!core.hasAccounts()) accountsPage.open();
     }
 
     void initializeViews() {
@@ -94,7 +90,6 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         toolbar.setOnMenuItemClickListener(this::onToolbarItem);
         navView = findViewById(R.id.nav_view);
         headerStats = navView.getHeaderView(0).findViewById(R.id.header_stats);
-        accountSwitcher = navView.getHeaderView(0).findViewById(R.id.accountSwitcher);
         fab = findViewById(R.id.grid_fab);
         rv = findViewById(R.id.recycler_grid);
         wvHolder = findViewById(R.id.wvHolder);
@@ -108,6 +103,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         swipeRefresh.setOnRefreshListener(this::onPullToRefresh);
         datasetChips = findViewById(R.id.dataset_chips);
 
+        accountsPage = new AccountsPage(this, core);
         wv = new LoginWebView(this, core, this);
         ((FrameLayout) findViewById(R.id.wv_container)).addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -160,7 +156,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     void onPullToRefresh() {
         swipeRefresh.setRefreshing(false);
         if (!core.loggedIn()) {
-            openInstagram();
+            noAccounts();
             return;
         }
         rvAdapter.setCurrentDataset(rvAdapter.getCurrentDataset());
@@ -230,68 +226,32 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
 
     // side menu ----------------------------------------------------
     void updateHeader() {
-        Source active = core.active();
-        if (active == null) {
+        List<Source> used = core.library.sources();
+        if (used.isEmpty()) {
             headerStats.setText("Not logged in");
             return;
         }
-        headerStats.setText(String.format(Locale.US, "%,d saved posts", active.posts.size()));
+        int posts = 0;
+        for (Source s : used) posts += s.posts.size();
+        headerStats.setText(String.format(Locale.US, "%d account%s · %,d saved posts",
+                used.size(), used.size() == 1 ? "" : "s", posts));
     }
 
-    static String label(String[] account) {
-        return (Reddit.SOURCE_ID.equals(account[0]) ? "u/" : "@") + account[1];
-    }
-
-    // the header's dropdown picks the one data source, from all accounts of all services
-    void setupAccountSwitcher() {
-        accounts = core.accounts.allAccounts();
-        currentAccountIndex = -1;
-        String service = core.accounts.activeService(), user = core.accounts.activeUser();
-        List<String> labels = new ArrayList<>();
-        for (int i = 0; i < accounts.size(); i++) {
-            String[] a = accounts.get(i);
-            labels.add(label(a));
-            if (a[0].equals(service) && a[1].equals(user)) currentAccountIndex = i;
-        }
-        accountSwitcher.setAdapter(new ArrayAdapter<>(accountSwitcher.getContext(), android.R.layout.simple_spinner_dropdown_item, labels));
-        accountSwitcher.setSelection(Math.max(0, currentAccountIndex));
-        accountSwitcher.setVisibility(accounts.isEmpty() ? View.GONE : View.VISIBLE);
-        accountSwitcher.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                if (i == currentAccountIndex) return;
-                String[] a = accounts.get(i);
-                biometricAuth.authenticate("Switch to " + label(a), () -> {
-                    Log.d(TAG, "switching to " + a[0] + " " + a[1]);
-                    core.activate(a[0], a[1]);
-                    currentAccountIndex = i;
-                    handler.post(() -> {
-                        accountSwitcher.setSelection(i);
-                        wv.loadUrl("about:blank");
-                        reloadGrid();
-                    });
-                }, () -> handler.post(() -> accountSwitcher.setSelection(currentAccountIndex)));
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> adapterView) {
-            }
-        });
+    /** nothing to show yet: off to the accounts page */
+    void noAccounts() {
+        Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
+        accountsPage.open();
     }
 
     void setupMenu() {
         navView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
-            if (id == R.id.nav_open_instagram) {
-                openInstagram();
-            } else if (id == R.id.nav_new_login) {
-                showWebView("Instagram", "Log in with another account");
-                wv.addInstagramAccount();
-            } else if (id == R.id.nav_reddit) {
-                onRedditItem();
+            if (id == R.id.nav_accounts) {
+                drawerLayout.close();
+                accountsPage.open();
             } else if (!core.loggedIn()) {
-                Toast.makeText(this, "Log in first", Toast.LENGTH_SHORT).show();
-                openInstagram();
+                drawerLayout.close();
+                noAccounts();
             } else if (id == R.id.nav_sync) {
                 startSync(false);
                 drawerLayout.close();
@@ -310,64 +270,44 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         updateMenu();
     }
 
-    // the reddit item: log in, add another account, open, log out (switching is in the header)
-    void onRedditItem() {
-        String user = core.accounts.redditUser();
-        if (user == null) {
-            openReddit();
-            return;
-        }
-        new MaterialAlertDialogBuilder(this)
-                .setTitle("Reddit")
-                .setItems(new String[]{"Add another Reddit account", "Open Reddit", "Log out of u/" + user}, (d, which) -> {
-                    if (which == 0) {
-                        showWebView("Reddit", "Log in with another account");
-                        wv.addRedditAccount();
-                    } else if (which == 1) {
-                        openReddit();
-                    } else {
-                        new MaterialAlertDialogBuilder(this)
-                                .setTitle("Log out of u/" + user + "?")
-                                .setMessage("Its synced posts stay on the phone and come back if you log in again.")
-                                .setNegativeButton("Cancel", null)
-                                .setPositiveButton("Log out", (d2, w) -> {
-                                    core.logoutReddit(user);
-                                    setupAccountSwitcher();
-                                    reloadGrid();
-                                }).show();
-                    }
-                }).show();
-    }
-
     void updateMenu() {
         Menu m = navView.getMenu();
-        String reddit = core.accounts.redditUser();
-        m.findItem(R.id.nav_reddit).setTitle(reddit == null ? "Log in to Reddit" : "Reddit accounts");
         m.findItem(R.id.nav_rest_server).setTitle(RESTServer.isRunning ? "REST server running" : "Start REST server");
     }
 
     // logging in -----------------------------------------------------
-    void openInstagram() {
-        String user = core.accounts.instagramUser();
-        showWebView("Instagram", user != null ? "Logged in as @" + user : "Log in to continue");
-        wv.openInstagram();
+    void addInstagramAccount() {
+        showWebView("Instagram", "Log in to add an account");
+        wv.addInstagramAccount();
     }
 
-    void openReddit() {
-        String user = core.accounts.redditUser();
-        showWebView("Reddit", user != null ? "Logged in as u/" + user : "Log in to add your Reddit saves");
-        wv.openReddit();
+    void addRedditAccount() {
+        showWebView("Reddit", "Log in to add an account");
+        wv.addRedditAccount();
+    }
+
+    /** the service's site with this account's session (logs it in again if it expired) */
+    void openAccount(String service, String user) {
+        if (Reddit.SOURCE_ID.equals(service)) {
+            core.accounts.switchReddit(user);
+            showWebView("Reddit", "u/" + user);
+            wv.openReddit();
+        } else {
+            core.accounts.switchInstagram(user);
+            showWebView("Instagram", "@" + user);
+            wv.openInstagram();
+        }
     }
 
     @Override
     public void onLoggedIn(String sourceId, String username) {
-        Toast.makeText(this, "Logged in as " + (Reddit.SOURCE_ID.equals(sourceId) ? "u/" : "@") + username, Toast.LENGTH_SHORT).show();
-        setupAccountSwitcher();
-        reloadGrid();
         hideWebView();
+        Toast.makeText(this, "Logged in as " + AccountsPage.label(sourceId, username), Toast.LENGTH_SHORT).show();
+        if (accountsPage.isOpen()) accountsPage.refresh();
+        reloadGrid();
         // a new account has nothing yet, fetch its saves
-        Source s = core.library.source(sourceId);
-        if (s != null && s.posts.size() == 0 && !Core.syncing) startSync(sourceId, false);
+        Source s = core.library.source(sourceId, username);
+        if (s != null && s.posts.size() == 0 && !Core.syncing) startSync(s, false);
     }
 
     void showWebView(String title, String subtitle) {
@@ -384,6 +324,10 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
     }
 
+    void onOverlayShown(boolean shown) {
+        onGalleryShown(shown);
+    }
+
     void onGalleryShown(boolean shown) {
         drawerLayout.setDrawerLockMode(shown ? DrawerLayout.LOCK_MODE_LOCKED_CLOSED : DrawerLayout.LOCK_MODE_UNLOCKED);
     }
@@ -393,9 +337,9 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         startSync(null, resumeOnly);
     }
 
-    void startSync(String sourceId, boolean resumeOnly) {
+    void startSync(Source only, boolean resumeOnly) {
         onSyncProgress("Starting sync");
-        core.sync(sourceId, resumeOnly);
+        core.sync(only, resumeOnly);
     }
 
     @Override
@@ -439,6 +383,8 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
             else hideWebView();
         } else if (gallery.isOpen()) {
             gallery.back();
+        } else if (accountsPage.isOpen()) {
+            accountsPage.close();
         } else if (rvAdapter.selected.size() > 0) {
             rvAdapter.clearSelection();
         } else {

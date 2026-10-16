@@ -42,6 +42,11 @@ public final class Library {
         return null;
     }
 
+    public Source source(String id, String account) {
+        for (Source s : sources) if (s.id.equals(id) && s.account.equals(account)) return s;
+        return null;
+    }
+
     public int totalPosts() {
         int n = 0;
         for (Source s : enabled()) n += s.posts.size();
