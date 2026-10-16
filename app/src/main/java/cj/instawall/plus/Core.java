@@ -83,6 +83,23 @@ public final class Core {
         reload();
     }
 
+    /** makes another reddit account active: its session goes into the WebView cookies */
+    public void switchReddit(String user) {
+        accounts.switchReddit(user);
+        LoginWebView.useRedditSession(accounts.redditCookie(user));
+        reload();
+    }
+
+    public void logoutReddit(String user) {
+        boolean wasActive = user.equals(accounts.redditUser());
+        accounts.logoutReddit(user);
+        if (wasActive) {
+            String next = accounts.redditUser();
+            LoginWebView.useRedditSession(next == null ? null : accounts.redditCookie(next));
+        }
+        reload();
+    }
+
     /** rebuild sources after a login, logout or account switch */
     public synchronized void reload() {
         List<Source> sources = new ArrayList<>();
@@ -206,6 +223,9 @@ public final class Core {
                             cursorKey(s), s.policy, Sleeper.REAL, this::reportSync, random);
                     SyncEngine.Result r = resumeOnly ? engine.resume() : engine.sync();
                     Log.d(TAG, "sync " + s.id + ": " + r.outcome + ", " + r.newPosts + " new");
+                    // reddit refreshes session cookies as it goes, keep the stored copy current
+                    if (Reddit.SOURCE_ID.equals(s.id))
+                        accounts.updateRedditCookie(s.account, android.webkit.CookieManager.getInstance().getCookie(LoginWebView.REDDIT_URL));
                     messages.add(r.message);
                 }
             } catch (Exception e) {

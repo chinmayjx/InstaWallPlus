@@ -41,6 +41,8 @@ public class LoginWebView extends WebView {
     private final AtomicBoolean handled = new AtomicBoolean(false);
     private volatile String lastRedditCookie;
     private volatile String appId;
+    // logged out to add a reddit account; the active one gets its session back if that's cancelled
+    private volatile boolean addingReddit;
 
     public LoginWebView(@NonNull Context context, Core core, Listener listener) {
         super(context);
@@ -110,18 +112,63 @@ public class LoginWebView extends WebView {
         CookieManager.getInstance().removeAllCookies(done -> post(() -> loadUrl(INSTAGRAM_URL + "/accounts/login/")));
     }
 
+    /** the browser was closed: if adding a reddit account didn't finish, restore the active one */
+    public void closed() {
+        if (!addingReddit) return;
+        addingReddit = false;
+        handled.set(true);
+        String user = core.accounts.redditUser();
+        useRedditSession(user == null ? null : core.accounts.redditCookie(user));
+    }
+
+    /** reddit with the active account's session */
     public void openReddit() {
         service = Reddit.SOURCE_ID;
+        addingReddit = false;
         handled.set(false);
         lastRedditCookie = null;
-        String cookie = core.accounts.redditCookie();
-        if (cookie != null) setCookies(REDDIT_URL, cookie);
+        String user = core.accounts.redditUser();
+        if (user != null) useRedditSession(core.accounts.redditCookie(user));
+        loadUrl(REDDIT_URL + "/login/");
+    }
+
+    /** reddit logged out, to add another account */
+    public void addRedditAccount() {
+        service = Reddit.SOURCE_ID;
+        addingReddit = true;
+        handled.set(false);
+        lastRedditCookie = null;
+        useRedditSession(null);
         loadUrl(REDDIT_URL + "/login/");
     }
 
     public static void setCookies(String url, String cookie) {
         for (String c : cookie.split(";")) CookieManager.getInstance().setCookie(url, c.trim());
         CookieManager.getInstance().flush();
+    }
+
+    /**
+     * Replaces the WebView's reddit cookies (shared app-wide, also used for syncing) with a
+     * stored session, or clears them when cookie is null. Reddit sets them on .reddit.com.
+     */
+    public static void useRedditSession(String cookie) {
+        CookieManager cm = CookieManager.getInstance();
+        String current = cm.getCookie(REDDIT_URL);
+        if (current != null) {
+            for (String c : current.split(";")) {
+                String name = c.trim().split("=", 2)[0];
+                if (name.isEmpty()) continue;
+                cm.setCookie(REDDIT_URL, name + "=; Max-Age=0; Path=/");
+                cm.setCookie(REDDIT_URL, name + "=; Max-Age=0; Path=/; Domain=.reddit.com");
+            }
+        }
+        if (cookie != null) {
+            for (String c : cookie.split(";")) {
+                String kv = c.trim();
+                if (!kv.isEmpty()) cm.setCookie(REDDIT_URL, kv + "; Path=/; Domain=.reddit.com");
+            }
+        }
+        cm.flush();
     }
 
     private void checkLogin() {
@@ -155,6 +202,7 @@ public class LoginWebView extends WebView {
             String user = core.redditUsername();
             if (user == null || !handled.compareAndSet(false, true)) return;
             CookieManager.getInstance().flush();
+            addingReddit = false;
             core.accounts.loginReddit(user, cookie);
             loggedIn(Reddit.SOURCE_ID, user);
         }).start();

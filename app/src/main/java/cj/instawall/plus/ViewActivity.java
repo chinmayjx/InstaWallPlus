@@ -308,23 +308,50 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
         updateMenu();
     }
 
+    // the reddit item: pick the active account (fingerprint, like instagram), add, sync, log out
     void onRedditItem() {
-        String user = core.accounts.redditUser();
-        if (user == null) {
+        String active = core.accounts.redditUser();
+        if (active == null) {
             openReddit();
             return;
         }
+        List<String> users = core.accounts.redditUsers();
+        List<String> labels = new ArrayList<>();
+        for (String u : users) labels.add((u.equals(active) ? "✓  u/" : "     u/") + u);
+        int add = labels.size();
+        labels.add("Add another Reddit account");
+        labels.add("Sync u/" + active);
+        labels.add("Open Reddit");
+        labels.add("Log out of u/" + active);
         new MaterialAlertDialogBuilder(this)
-                .setTitle("u/" + user)
-                .setItems(new String[]{"Open Reddit", "Sync Reddit saves", "Log out of Reddit"}, (d, which) -> {
-                    if (which == 0) openReddit();
-                    else if (which == 1) {
+                .setTitle("Reddit")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    if (which < add) {
+                        String user = users.get(which);
+                        if (user.equals(active)) return;
+                        biometricAuth.authenticate("Switch to u/" + user, () -> {
+                            Log.d(TAG, "switching reddit account to " + user);
+                            core.switchReddit(user);
+                            handler.post(this::reloadGrid);
+                        }, () -> {
+                        });
+                    } else if (which == add) {
+                        showWebView("Reddit", "Log in with another account");
+                        wv.addRedditAccount();
+                    } else if (which == add + 1) {
                         startSync(Reddit.SOURCE_ID, false);
                         drawerLayout.close();
+                    } else if (which == add + 2) {
+                        openReddit();
                     } else {
-                        core.accounts.logoutReddit();
-                        core.reload();
-                        reloadGrid();
+                        new MaterialAlertDialogBuilder(this)
+                                .setTitle("Log out of u/" + active + "?")
+                                .setMessage("Its synced posts stay on the phone and come back if you log in again.")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Log out", (d2, w) -> {
+                                    core.logoutReddit(active);
+                                    reloadGrid();
+                                }).show();
                     }
                 }).show();
     }
@@ -378,6 +405,7 @@ public class ViewActivity extends AppCompatActivity implements Core.SyncListener
     }
 
     void hideWebView() {
+        wv.closed();
         wvHolder.setVisibility(View.INVISIBLE);
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
     }
