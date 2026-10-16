@@ -10,14 +10,29 @@ android {
         applicationId "cj.instawall.plus"
         minSdk 30
         targetSdk 34
-        versionCode 33
-        versionName "33"
+        // CI passes -PversionCode=<n> so every release can be installed over the previous one
+        versionCode project.hasProperty('versionCode') ? project.versionCode.toInteger() : 33
+        versionName project.hasProperty('versionCode') ? project.versionCode : "33"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            // set by the release workflow from repository secrets
+            def keystore = System.getenv("RELEASE_KEYSTORE_PATH")
+            if (keystore) {
+                storeFile file(keystore)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (System.getenv("RELEASE_KEYSTORE_PATH")) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
