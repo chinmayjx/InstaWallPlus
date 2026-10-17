@@ -33,17 +33,9 @@ public final class WallpaperSetter {
             Bitmap screen = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(screen);
             Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
-            if (bitmap.getWidth() > bitmap.getHeight()) {
-                // landscape (most reddit wallpapers): fill the screen, crop the sides
-                float scale = (float) h / bitmap.getHeight();
-                int srcW = Math.round(w / scale);
-                int left = (bitmap.getWidth() - srcW) / 2;
-                canvas.drawBitmap(bitmap, new Rect(left, 0, left + srcW, bitmap.getHeight()), new Rect(0, 0, w, h), paint);
-            } else {
-                // portrait/square (instagram): fit the width, centered
-                int sh = Math.round((float) w / bitmap.getWidth() * bitmap.getHeight());
-                canvas.drawBitmap(bitmap, null, new Rect(0, (h - sh) / 2, w, (h - sh) / 2 + sh), paint);
-            }
+            // fit the width, centered, black above and below (landscape photos too: no cropping)
+            int sh = Math.round((float) w / bitmap.getWidth() * bitmap.getHeight());
+            canvas.drawBitmap(bitmap, null, new Rect(0, (h - sh) / 2, w, (h - sh) / 2 + sh), paint);
             WallpaperManager.getInstance(context).setBitmap(screen);
             Log.d(TAG, "Wallpaper set successfully: " + image.getFileName());
             return true;
