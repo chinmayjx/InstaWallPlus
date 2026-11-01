@@ -7,6 +7,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * One logged in account of a service: where its posts and images live, how to fetch its saved
@@ -66,6 +70,25 @@ public final class Source {
 
     public boolean owns(Path file) {
         return file.startsWith(root);
+    }
+
+    /** deletes everything stored for this account: posts, images, trash */
+    public void deleteData() throws IOException {
+        // an instagram account named "reddit" shares its folder with the reddit accounts:
+        // delete only its own files there
+        boolean shared = Instagram.SOURCE_ID.equals(id) && root.equals(root.resolveSibling(Reddit.SOURCE_ID));
+        Path[] tops = shared
+                ? new Path[]{root.resolve("saved_posts"), imagesDir(), root.resolve("deleted_images.json"),
+                root.resolve(".deleted_images"), root.resolve("recent_wallpapers.txt")}
+                : new Path[]{root};
+        for (Path top : tops) {
+            if (!Files.exists(top)) continue;
+            List<Path> all;
+            try (Stream<Path> walk = Files.walk(top)) {
+                all = walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList());
+            }
+            for (Path p : all) Files.delete(p);
+        }
     }
 
     public SavedPost post(String postId) {

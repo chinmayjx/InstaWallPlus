@@ -1,11 +1,13 @@
 package cj.instawall.plus;
 
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -14,13 +16,13 @@ import java.util.Locale;
 
 import cj.instawall.plus.core.Reddit;
 
-/** Every Instagram and Reddit account, with add, open and log out. */
+/** Every Instagram and Reddit account, with add, open, log out and remove. */
 class AccountsPage {
     final ViewActivity activity;
     final Core core;
     final View root;
     final LinearLayout instagramList, redditList;
-    /** an account was logged out while open: the grid reloads on close */
+    /** an account was logged out or removed while open: the grid reloads on close */
     boolean changed = false;
 
     AccountsPage(ViewActivity activity, Core core) {
@@ -85,9 +87,11 @@ class AccountsPage {
             PopupMenu m = new PopupMenu(activity, b);
             m.getMenu().add(0, 0, 0, "Open " + (Reddit.SOURCE_ID.equals(service) ? "Reddit" : "Instagram"));
             m.getMenu().add(0, 1, 1, "Log out");
+            m.getMenu().add(0, 2, 2, "Remove account");
             m.setOnMenuItemClickListener(i -> {
                 if (i.getItemId() == 0) activity.openAccount(service, user);
-                else confirmLogout(service, user);
+                else if (i.getItemId() == 1) confirmLogout(service, user);
+                else confirmRemove(service, user, posts);
                 return true;
             });
             m.show();
@@ -105,6 +109,34 @@ class AccountsPage {
                     else core.logoutInstagram(user);
                     changed = true;
                     refresh();
+                }).show();
+    }
+
+    private void confirmRemove(String service, String user, int posts) {
+        new MaterialAlertDialogBuilder(activity)
+                .setTitle("Remove " + label(service, user) + "?")
+                .setMessage(String.format(Locale.US, "Logs out and deletes its %,d saved posts and their photos from this phone. This can't be undone.", posts))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Remove", (d, w) -> {
+                    if (Core.syncing) {
+                        Toast.makeText(activity, "Wait for the sync to finish", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    new Thread(() -> {
+                        String message = "Removed " + label(service, user);
+                        try {
+                            core.removeAccount(service, user);
+                        } catch (Exception e) {
+                            Log.e(Core.TAG, "removeAccount: " + Log.getStackTraceString(e));
+                            message = "Logged out, but deleting its files failed: " + e.getMessage();
+                        }
+                        String done = message;
+                        activity.runOnUiThread(() -> {
+                            changed = true;
+                            refresh();
+                            Toast.makeText(activity, done, Toast.LENGTH_SHORT).show();
+                        });
+                    }).start();
                 }).show();
     }
 }

@@ -97,6 +97,25 @@ public final class Core {
         reload();
     }
 
+    /**
+     * Logs the account out and deletes everything synced for it: posts, images, trash, its sync
+     * cursor and its wallpaper history. If one of its photos is the wallpaper, another one takes
+     * its place. Slow (deletes files), call in the background.
+     */
+    public void removeAccount(String service, String user) throws IOException {
+        Source s = sourceFor(service, user);
+        List<Path> recent = recentWallpapers();
+        boolean wasWallpaper = !recent.isEmpty() && s.owns(recent.get(0));
+        if (Reddit.SOURCE_ID.equals(service)) logoutReddit(user);
+        else logoutInstagram(user);
+        SharedPreferences.Editor e = prefs.edit().remove("sync_cursor:" + service + ":" + user);
+        if (Instagram.SOURCE_ID.equals(service)) e.remove("last_sync_cursor:" + user);
+        e.commit();
+        forgetRecent(s);
+        s.deleteData();
+        if (wasWallpaper && loggedIn()) setRandomWallpaper();
+    }
+
     /** a source for any account (for post counts on the accounts page) */
     public Source sourceFor(String service, String user) {
         if (Reddit.SOURCE_ID.equals(service)) return Source.reddit(filesDir, user, redditHttp());
@@ -320,6 +339,18 @@ public final class Core {
             Files.write(recentFile(), (image + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             Log.e(TAG, "logRecent: " + e);
+        }
+    }
+
+    private synchronized void forgetRecent(Source s) {
+        try {
+            if (!Files.exists(recentFile())) return;
+            List<String> keep = new ArrayList<>();
+            for (String l : Files.readAllLines(recentFile()))
+                if (l.trim().isEmpty() || !s.owns(Paths.get(l.trim()))) keep.add(l);
+            Files.write(recentFile(), keep, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            Log.e(TAG, "forgetRecent: " + e);
         }
     }
 
